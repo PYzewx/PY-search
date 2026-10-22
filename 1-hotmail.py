@@ -59,7 +59,7 @@ except Exception:
 # ══════════════════════════════════════════════════════════════
 #  CONFIGURATION
 # ══════════════════════════════════════════════════════════════
-BOT_TOKEN     = "7885601619:AAFDmzHEl8SymvmrBNXjbhiBH3qHZhCYatQ"
+BOT_TOKEN     = "7885601619:AAHJmuSGsODh2O9f5SdXbt46xlPYNWzg12E"
 ADMIN_ID      = 8573809926
 DB_PATH       = "cyber_searcher.db"
 BOT_REGISTRY_FILE = "bot_registry.json"
