@@ -3933,161 +3933,317 @@ def mobius_search(query, search_type=None):
         body["type"] = search_type
     return mobius_api_request("/api/v1/search", method="POST", json_body=body)
 
-def mobius_format_tr(resp, aranan):
-    if not isinstance(resp, dict):
-        return f"❌ Geçersiz yanıt:\n<code>{html.escape(str(resp)[:800])}</code>"
+def mobius_type_kb():
+    mk = InlineKeyboardMarkup(row_width=2)
+    mk.add(
+        _btn("🤖 Auto", "mobius_t_auto", "primary"),
+        _btn("📱 Telefon", "mobius_t_phone", "primary"),
+        _btn("✈️ Telegram", "mobius_t_tg", "success"),
+        _btn("📘 VK", "mobius_t_vk", "primary"),
+        _btn("👤 FIO / İsim", "mobius_t_fio", "success"),
+        _btn("📧 E-posta", "mobius_t_email", "primary"),
+        _btn("🧾 INN", "mobius_t_inn", "primary"),
+        _btn("🛂 Pasaport", "mobius_t_passport", "success"),
+    )
+    mk.add(_btn("◀️ Geri", "tool_mobius", "danger"))
+    return mk
+
+_MOBIUS_TYPE_LABEL = {
+    None: "Auto",
+    "auto": "Auto",
+    "phone": "Telefon",
+    "tg": "Telegram",
+    "vk": "VK",
+    "fio": "FIO / İsim",
+    "email": "E-posta",
+    "inn": "INN",
+    "passport": "Pasaport",
+}
+
+_MOBIUS_FIELD_TR = {
+    "user_id": "🆔 User ID",
+    "telegram id": "🆔 Telegram ID",
+    "Telegram ID": "🆔 Telegram ID",
+    "tg_id": "🆔 Telegram ID",
+    "username": "👤 Username",
+    "Username": "👤 Username",
+    "first_name": "📛 Ad",
+    "last_name": "📛 Soyad",
+    "name": "📛 İsim",
+    "Имя": "📛 İsim",
+    "FullName": "📛 Tam ad",
+    "phone": "📱 Telefon",
+    "Phone": "📱 Telefon",
+    "bio": "📝 Bio",
+    "О себе": "📝 Bio",
+    "email": "📧 E-posta",
+    "Email": "📧 E-posta",
+    "password": "🔑 Şifre",
+    "Password": "🔑 Şifre",
+    "database": "🗄️ Kaynak DB",
+    "dc_id": "🖥 DC",
+    "is_premium": "⭐ Premium",
+    "gifts_count": "🎁 Hediye",
+    "Всего подарков": "🎁 Hediye",
+    "usernames_history": "📜 Username geçmişi",
+    "История юзернеймов": "📜 Username geçmişi",
+    "first_names_history": "📜 İsim geçmişi",
+    "История имён": "📜 İsim geçmişi",
+    "Найдено чатов": "💬 Sohbet sayısı",
+    "Сообщений в чатах": "✉️ Mesaj sayısı",
+    "Первое сообщение": "🕐 İlk mesaj",
+    "Последнее сообщение": "🕐 Son mesaj",
+    "Название чата": "💬 Sohbet",
+    "Ссылка / Юзернейм": "🔗 Link",
+    "Сообщений пользователя": "✉️ Mesaj",
+    "Чат": "💬 Sohbet",
+    "Дата и время": "📅 Tarih",
+    "Текст сообщения": "💬 Metin",
+    "RegDate": "📅 Kayıt",
+    "NickName": "🏷 Nick",
+    "IP": "🌐 IP",
+    "Country": "🌍 Ülke",
+    "Gender": "⚧ Cinsiyet",
+    "Link": "🔗 Link",
+    "FacebookID": "📘 FB ID",
+    "VkID": "📘 VK ID",
+    "SteamID": "🎮 Steam ID",
+    "gift_received": "🎁 Alınan",
+    "gift_sent": "🎁 Gönderilen",
+    "Подарок": "🎁 Hediye",
+    "Отправитель": "👤 Gönderen",
+    "NFT Подарок": "🖼 NFT",
+    "Модель": "🧩 Model",
+    "Оценка": "💰 Değer",
+}
+
+
+def _mobius_field_label(k):
+    if k in _MOBIUS_FIELD_TR:
+        return _MOBIUS_FIELD_TR[k]
+    kl = str(k).lower()
+    for a, b in _MOBIUS_FIELD_TR.items():
+        if str(a).lower() == kl:
+            return b
+    return f"• {k}"
+
+
+def _mobius_fmt_val(v, limit=400):
+    if v is None:
+        return "—"
+    s = str(v).strip()
+    if not s:
+        return "—"
+    if len(s) > limit:
+        s = s[:limit] + "…"
+    return html.escape(s)
+
+
+def _mobius_fmt_record(rec, idx=None):
     lines = []
-    lines.append("╔" + "═" * 28 + "╗")
-    lines.append("║   🔍  TELEGRAM OSINT         ║")
-    lines.append("╚" + "═" * 28 + "╝")
-    lines.append("")
-    lines.append(f"🎯 <b>Aranan</b>: <code>{html.escape(str(aranan))}</code>")
-    q = resp.get("query")
-    if q and str(q) != str(aranan):
-        lines.append(f"📌 Sorgu: <code>{html.escape(str(q))}</code>")
+    if idx is not None:
+        lines.append(f"  ── <b>#{idx}</b> ──")
+    if not isinstance(rec, dict):
+        lines.append(f"  {_mobius_fmt_val(rec)}")
+        return lines
+    # priority order
+    order = [
+        "user_id", "Telegram ID", "tg_id", "username", "Username",
+        "first_name", "last_name", "name", "Имя", "FullName",
+        "phone", "Phone", "bio", "О себе", "email", "Email",
+        "database", "NickName", "IP", "Country", "RegDate",
+        "usernames_history", "История юзернеймов",
+        "first_names_history", "История имён",
+        "Найдено чатов", "Сообщений в чатах",
+        "Первое сообщение", "Последнее сообщение",
+        "Название чата", "Ссылка / Юзернейм", "Сообщений пользователя",
+        "Чат", "Дата и время", "Текст сообщения",
+        "gift_received", "gift_sent", "Подарок", "Отправитель",
+        "NFT Подарок", "Модель", "Оценка",
+        "password", "Password", "Link", "FacebookID", "VkID", "SteamID",
+    ]
+    seen = set()
+    for k in order:
+        if k in rec and rec[k] not in (None, "", [], {}):
+            lines.append(f"  {_mobius_field_label(k)}: <code>{_mobius_fmt_val(rec[k])}</code>")
+            seen.add(k)
+    for k, v in rec.items():
+        if k in seen or v in (None, "", [], {}):
+            continue
+        if isinstance(v, (dict, list)):
+            continue
+        lines.append(f"  {_mobius_field_label(k)}: <code>{_mobius_fmt_val(v)}</code>")
+    return lines
+
+
+def mobius_format_tr(resp, aranan, search_type=None):
+    """API sonucunu Türkçe, emojili, okunaklı parçalara ayırır. List[str] döner."""
+    if not isinstance(resp, dict):
+        return [f"❌ Geçersiz yanıt:\n<code>{html.escape(str(resp)[:500])}</code>"]
+
+    chunks = []
+    head = []
+    head.append("╔" + "═" * 28 + "╗")
+    head.append("║   🔍  TELEGRAM OSINT         ║")
+    head.append("╚" + "═" * 28 + "╝")
+    head.append("")
+    head.append(f"🎯 <b>Aranan</b>: <code>{html.escape(str(aranan))}</code>")
+    st_lbl = _MOBIUS_TYPE_LABEL.get(search_type, search_type or "Auto")
+    head.append(f"📂 <b>Tip</b>: {html.escape(str(st_lbl))}")
     kind = resp.get("kind") or resp.get("type")
     if kind:
-        lines.append(f"📂 Tür: <b>{html.escape(str(kind))}</b>")
+        head.append(f"🏷️ API tür: <b>{html.escape(str(kind))}</b>")
     if resp.get("elapsed_seconds") is not None:
-        lines.append(f"⏱ Süre: <b>{resp.get('elapsed_seconds')}</b> sn")
+        head.append(f"⏱ Süre: <b>{resp.get('elapsed_seconds')}</b> sn")
     if resp.get("results_count") is not None:
-        lines.append(f"📊 Bulunan: <b>{resp.get('results_count')}</b>")
-    services = resp.get("services_used")
-    if services:
-        if isinstance(services, list):
-            lines.append(f"🔌 Servisler: {html.escape(', '.join(map(str, services)))}")
+        head.append(f"📊 Bulunan kaynak: <b>{resp.get('results_count')}</b>")
+    head.append("")
+    head.append("━" * 28)
+
+    body_parts = []
+
+    results = resp.get("results") or {}
+    groups = resp.get("groups") or {}
+
+    def add_source_block(title, items_or_text):
+        block = [""]
+        block.append(f"📡 <b>{html.escape(str(title))}</b>")
+        if isinstance(items_or_text, list):
+            for i, item in enumerate(items_or_text[:25], 1):
+                if isinstance(item, dict):
+                    block.extend(_mobius_fmt_record(item, i))
+                else:
+                    # bazen API string list / repr list döner
+                    s = str(item)
+                    if s.startswith("[{") or s.startswith("{"):
+                        try:
+                            import ast
+                            parsed = ast.literal_eval(s) if s.startswith("[") else None
+                            if isinstance(parsed, list):
+                                for j, rec in enumerate(parsed[:20], 1):
+                                    if isinstance(rec, dict):
+                                        block.extend(_mobius_fmt_record(rec, j))
+                                    else:
+                                        block.append(f"  • {_mobius_fmt_val(rec)}")
+                                continue
+                        except Exception:
+                            pass
+                    block.append(f"  • {_mobius_fmt_val(item, 300)}")
+            if isinstance(items_or_text, list) and len(items_or_text) > 25:
+                block.append(f"  … +{len(items_or_text) - 25} kayıt")
         else:
-            lines.append(f"🔌 Servisler: {html.escape(str(services))}")
-    lines.append("")
-    lines.append("━" * 28)
+            block.append(f"  {_mobius_fmt_val(items_or_text)}")
+        body_parts.append("\n".join(block))
 
-    def _dump_dict(d, indent=0):
-        out = []
-        pad = "  " * indent
-        if not isinstance(d, dict):
-            out.append(f"{pad}• {html.escape(str(d))}")
-            return out
-        skip = {"success", "raw", "developer", "telegram", "website", "auth"}
-        for k, v in d.items():
-            if k is None or str(k).lower() in skip:
-                continue
-            if v is None or v == "" or v == [] or v == {}:
-                continue
-            key = html.escape(str(k))
-            if isinstance(v, dict):
-                out.append(f"{pad}▸ <b>{key}</b>")
-                out.extend(_dump_dict(v, indent + 1))
-            elif isinstance(v, list):
-                out.append(f"{pad}▸ <b>{key}</b> ({len(v)})")
-                for i, item in enumerate(v[:12], 1):
-                    if isinstance(item, dict):
-                        out.append(f"{pad}  <b>#{i}</b>")
-                        out.extend(_dump_dict(item, indent + 2))
-                    else:
-                        out.append(f"{pad}  {i}. {html.escape(str(item))}")
-                if len(v) > 12:
-                    out.append(f"{pad}  … +{len(v) - 12} kayıt")
-            else:
-                out.append(f"{pad}• <b>{key}</b>: <code>{html.escape(str(v))}</code>")
-        return out
-
-    groups = resp.get("groups")
-    results = resp.get("results")
-    found_any = False
-    if isinstance(groups, dict) and groups:
-        found_any = True
-        for gname, gdata in groups.items():
-            lines.append("")
-            lines.append(f"📦 <b>{html.escape(str(gname))}</b>")
-            if isinstance(gdata, dict):
-                if gdata.get("service"):
-                    lines.append(f"  🏷️ {html.escape(str(gdata['service']))}")
-                if gdata.get("count") is not None:
-                    lines.append(f"  📊 Kayıt: <b>{gdata['count']}</b>")
-                records = gdata.get("records") or []
-                for i, rec in enumerate(records[:15], 1):
-                    lines.append(f"  ── <b>#{i}</b> ──")
-                    if isinstance(rec, dict):
-                        lines.extend(_dump_dict(rec, 1))
-                    else:
-                        lines.append(f"  • {html.escape(str(rec))}")
-                if len(records) > 15:
-                    lines.append(f"  … +{len(records) - 15} kayıt")
-            else:
-                lines.append(f"  {html.escape(str(gdata))}")
     if isinstance(results, dict) and results:
-        found_any = True
         for source, sdata in results.items():
-            lines.append("")
-            lines.append(f"📡 <b>{html.escape(str(source))}</b>")
             if not isinstance(sdata, dict):
-                lines.append(f"  {html.escape(str(sdata))}")
+                add_source_block(source, sdata)
                 continue
-            label = sdata.get("source") or sdata.get("service")
-            if label and str(label) != str(source):
-                lines.append(f"  🏷️ Kaynak: {html.escape(str(label))}")
-            stype = sdata.get("stype") or sdata.get("kind_tag")
-            if stype:
-                lines.append(f"  📂 Tür: {html.escape(str(stype))}")
-            target = sdata.get("target")
-            if target:
-                lines.append(f"  🎯 Hedef: <code>{html.escape(str(target))}</code>")
+            title = sdata.get("source") or sdata.get("service") or source
+            # nested result.data.results OR direct list under result
             inner = sdata.get("result")
+            records = []
             if isinstance(inner, dict):
-                if inner.get("status") is not None:
-                    lines.append(f"  ✅ Durum: {html.escape(str(inner.get('status')))}")
                 data = inner.get("data")
                 if isinstance(data, dict):
-                    if "results_count" in data:
-                        lines.append(f"  📊 Toplam: <b>{data['results_count']}</b>")
-                    sf = data.get("services_found")
-                    if sf:
-                        lines.append(f"  🔌 {html.escape(', '.join(map(str, sf)) if isinstance(sf, list) else str(sf))}")
-                    inner_results = data.get("results")
-                    if isinstance(inner_results, dict):
-                        for key, items in inner_results.items():
+                    ir = data.get("results")
+                    if isinstance(ir, dict):
+                        for k, items in ir.items():
                             if isinstance(items, list):
-                                lines.append(f"  ▸ <b>{html.escape(str(key))}</b> ({len(items)})")
-                                for i, item in enumerate(items[:8], 1):
-                                    if isinstance(item, dict):
-                                        lines.append(f"    ── #{i} ──")
-                                        lines.extend(_dump_dict(item, 2))
-                                    else:
-                                        lines.append(f"    {i}. {html.escape(str(item))}")
-                                if len(items) > 8:
-                                    lines.append(f"    … +{len(items) - 8}")
+                                add_source_block(f"{title} · {k}", items)
                             else:
-                                lines.append(f"  • <b>{html.escape(str(key))}</b>: {html.escape(str(items))}")
-                    else:
-                        lines.extend(_dump_dict(data, 1))
-                else:
-                    lines.extend(_dump_dict(inner, 1))
+                                add_source_block(f"{title} · {k}", items)
+                        continue
+                    if isinstance(data.get("records"), list):
+                        records = data["records"]
+                # list directly in result
+                if isinstance(inner.get("data"), list):
+                    records = inner["data"]
+                # sometimes result is list-like in status body
+            # common: result is actually already parsed list in string form in terminal
+            # try sdata keys
+            for key in ("data", "records", "items"):
+                if isinstance(sdata.get(key), list):
+                    records = sdata[key]
+                    break
+            if not records and isinstance(inner, list):
+                records = inner
+            # TeleScan style: entire payload may be list under result after status
+            if not records and isinstance(inner, dict) and inner.get("status") is not None:
+                # remaining values
+                for k, v in inner.items():
+                    if k in ("status", "data") and not isinstance(v, list):
+                        continue
+                    if isinstance(v, list):
+                        records = v
+                        break
+            if records:
+                add_source_block(title, records)
             else:
-                lines.extend(_dump_dict(sdata, 1))
-    if not found_any and not groups and not results:
-        useful = {k: v for k, v in resp.items() if k not in (
-            "success", "query", "kind", "elapsed_seconds", "results_count",
-            "services_used", "groups", "results", "search_id", "report_url"
-        )}
-        if useful:
-            lines.append("")
-            lines.extend(_dump_dict(useful))
+                # dump flat useful fields from profile-like structures
+                block = [""]
+                block.append(f"📡 <b>{html.escape(str(title))}</b>")
+                if sdata.get("stype") or sdata.get("kind_tag"):
+                    block.append(f"  📂 {_mobius_fmt_val(sdata.get('stype') or sdata.get('kind_tag'))}")
+                if sdata.get("target"):
+                    block.append(f"  🎯 <code>{_mobius_fmt_val(sdata.get('target'))}</code>")
+                if isinstance(inner, dict):
+                    if inner.get("status") is not None:
+                        block.append(f"  ✅ HTTP: {inner.get('status')}")
+                    # deep walk for list of dicts
+                    def walk(obj, depth=0):
+                        found = []
+                        if isinstance(obj, list) and obj and isinstance(obj[0], dict):
+                            return obj
+                        if isinstance(obj, dict):
+                            for vv in obj.values():
+                                r = walk(vv, depth + 1)
+                                if r:
+                                    return r
+                        return None
+                    found = walk(inner)
+                    if found:
+                        body_parts.append("\n".join(block))
+                        add_source_block(f"{title} · kayıtlar", found)
+                        continue
+                body_parts.append("\n".join(block))
+
+    if isinstance(groups, dict) and groups:
+        for gname, gdata in groups.items():
+            if isinstance(gdata, dict):
+                recs = gdata.get("records") or []
+                add_source_block(gname, recs if recs else gdata)
+            else:
+                add_source_block(gname, gdata)
+
+    if not body_parts:
+        body_parts.append("\n⚠️ Kayıt bulunamadı.")
+
+    foot = [
+        "",
+        "━" * 28,
+        f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}",
+        "🤖 Cyber Search · Telegram OSINT | @hackledin",
+    ]
+
+    # Assemble into Telegram-sized chunks (<= 3500)
+    parts_out = []
+    current = "\n".join(head)
+    for bp in body_parts:
+        if len(current) + len(bp) + 2 > 3500:
+            parts_out.append(current)
+            current = bp.lstrip("\n")
         else:
-            lines.append("")
-            lines.append("⚠️ Kayıt bulunamadı veya boş sonuç.")
-    if resp.get("search_id"):
-        lines.append("")
-        lines.append(f"🆔 search_id: <code>{html.escape(str(resp.get('search_id')))}</code>")
-    if resp.get("report_url"):
-        lines.append(f"🔗 Rapor: {html.escape(str(resp.get('report_url')))}")
-    lines.append("")
-    lines.append("━" * 28)
-    lines.append(f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
-    lines.append("🤖 Cyber Search | @hackledin")
-    text = "\n".join(lines)
-    if len(text) > 3900:
-        text = text[:3900] + "\n\n… (kısaltıldı)"
-    return text
+            current = current + "\n" + bp
+    foot_txt = "\n".join(foot)
+    if len(current) + len(foot_txt) + 2 > 3500:
+        parts_out.append(current)
+        parts_out.append(foot_txt)
+    else:
+        parts_out.append(current + "\n" + foot_txt)
+    return parts_out
+
 
 def _process_mobius_search(msg, bot_instance, search_type=None):
     uid = msg.from_user.id
@@ -4102,8 +4258,14 @@ def _process_mobius_search(msg, bot_instance, search_type=None):
     if not allowed:
         bot_instance.reply_to(msg, mobius_no_balance_text(uid), reply_markup=mobius_packages_kb(), parse_mode="HTML")
         return
-    wait = bot_instance.reply_to(msg, f"⏳ <code>{html.escape(query)}</code> aranıyor...", parse_mode="HTML")
-    code, data = mobius_search(query, search_type)
+    st = search_type if search_type not in (None, "auto") else None
+    tip = _MOBIUS_TYPE_LABEL.get(search_type or "auto", "Auto")
+    wait = bot_instance.reply_to(
+        msg,
+        f"⏳ <b>Aranıyor...</b>\n🎯 <code>{html.escape(query)}</code>\n📂 Tip: <b>{html.escape(tip)}</b>",
+        parse_mode="HTML",
+    )
+    code, data = mobius_search(query, st)
     if code != 200 or not isinstance(data, dict):
         err = data.get("error") if isinstance(data, dict) else data
         try:
@@ -4112,35 +4274,33 @@ def _process_mobius_search(msg, bot_instance, search_type=None):
                 msg.chat.id, wait.message_id, parse_mode="HTML",
             )
         except Exception:
-            pass
+            bot_instance.send_message(msg.chat.id, f"❌ HTTP {code}: {err}")
         return
     mobius_use_query(uid)
-    txt = mobius_format_tr(data, query)
+    parts = mobius_format_tr(data, query, search_type=search_type or "auto")
     try:
         bot_instance.delete_message(msg.chat.id, wait.message_id)
     except Exception:
         pass
-    if len(txt) > 3500:
+    for i, part in enumerate(parts):
         try:
-            import io
-            raw = re.sub(r"<[^>]+>", "", txt)
-            bio = io.BytesIO(raw.encode("utf-8"))
-            bio.name = f"mobius_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-            bot_instance.send_document(
-                msg.chat.id, bio,
-                caption=f"🔍 Telegram OSINT · <code>{html.escape(query)}</code>\n💰 Kalan: <b>{mobius_get_balance(uid)}</b>",
-                parse_mode="HTML",
-            )
-        except Exception:
-            bot_instance.send_message(msg.chat.id, txt[:4000], parse_mode="HTML")
-    else:
-        bot_instance.send_message(msg.chat.id, txt, parse_mode="HTML")
+            bot_instance.send_message(msg.chat.id, part, parse_mode="HTML", disable_web_page_preview=True)
+        except Exception as e:
+            # HTML fail → plain
+            try:
+                plain = re.sub(r"<[^>]+>", "", part)
+                bot_instance.send_message(msg.chat.id, plain[:4000])
+            except Exception as e2:
+                print(f"[MOBIUS SEND] {e} / {e2}")
+        if i < len(parts) - 1:
+            time.sleep(0.35)
     free_left = max(0, MOBIUS_FREE_LIMIT - mobius_get_free_used(uid))
     bot_instance.send_message(
         msg.chat.id,
-        f"🆓 {free_left}/{MOBIUS_FREE_LIMIT} · 💰 {mobius_get_balance(uid)}",
+        f"✅ Bitti · 🆓 {free_left}/{MOBIUS_FREE_LIMIT} · 💰 {mobius_get_balance(uid)}",
         reply_markup=mobius_kb(uid),
     )
+
 
 def _admin_mobius_give(msg, bot_instance):
     if msg.from_user.id != ADMIN_ID:
@@ -6222,8 +6382,7 @@ def _sms_worker(phone, mail, mode, limit, interval, stop_event, uid, bot_instanc
         def _tick(force=False):
             nonlocal last_edit
             now = time.time()
-            min_gap = 2.5
-            if not force and now - last_edit < min_gap:
+            if not force and now - last_edit < 2.5:
                 return
             last_edit = now
             with _SMS_LOCK:
@@ -6233,17 +6392,15 @@ def _sms_worker(phone, mail, mode, limit, interval, stop_event, uid, bot_instanc
                     _SMS_SESSIONS[uid]["last_ok"] = sms.last_ok
                     _SMS_SESSIONS[uid]["last_fail"] = sms.last_fail
             if status_mid and chat_id:
-                txt = _sms_status_text(phone, mode, sms, len(services), limit)
                 try:
-                    bot_instance.edit_message_text(txt, chat_id, status_mid, parse_mode="HTML")
+                    bot_instance.edit_message_text(
+                        _sms_status_text(phone, mode, sms, len(services), limit),
+                        chat_id, status_mid, parse_mode="HTML",
+                    )
                 except Exception:
-                    try:
-                        bot_instance.edit_message_text(txt, chat_id, status_mid)
-                    except Exception:
-                        pass
+                    pass
 
         if mode == "turbo":
-            # Eski turbo: dalga dalga, servis 1x, join ~6sn, timeout 10sn
             while not stop_event.is_set():
                 threads = []
                 for fn in services:
@@ -6258,10 +6415,7 @@ def _sms_worker(phone, mail, mode, limit, interval, stop_event, uid, bot_instanc
                             else:
                                 sms.last_ok = name
                         except Exception:
-                            try:
-                                sms._fail(name)
-                            except Exception:
-                                pass
+                            sms._fail(name)
                     th = threading.Thread(target=_run, daemon=True)
                     threads.append(th)
                     th.start()
@@ -6313,10 +6467,11 @@ def _sms_worker(phone, mail, mode, limit, interval, stop_event, uid, bot_instanc
                     f"❌ Başarısız: <b>{sms.fail}</b>\n"
                     f"📊 Toplam: <b>{sms.adet + sms.fail}</b>\n"
                     f"━━━━━━━━━━━━━━━━━━━━━",
-                    chat_id, status_mid, parse_mode="HTML"
+                    chat_id, status_mid, parse_mode="HTML",
                 )
             except Exception:
                 pass
+
 
 def _launch_sms_bomb(uid, phone, mail, mode, limit, interval, bot_instance):
     with _SMS_LOCK:
@@ -8228,74 +8383,103 @@ def register_handlers(bot_instance):
                     except Exception:
                         pass
                 return
-
             if data == "mobius_search":
                 try:
                     bot_instance.answer_callback_query(call.id)
                 except Exception:
                     pass
-                try:
-                    allowed, _ = mobius_can_query(uid)
-                    if not allowed:
-                        bot_instance.send_message(
-                            call.message.chat.id,
-                            mobius_no_balance_text(uid),
-                            reply_markup=mobius_packages_kb(),
-                            parse_mode="HTML",
-                        )
-                        return
-                    m = bot_instance.send_message(
+                allowed, _ = mobius_can_query(uid)
+                if not allowed:
+                    bot_instance.send_message(
                         call.message.chat.id,
-                        "🔍 <b>Telegram OSINT — Sorgu</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━\n"
-                        "Telefon, @username, e-posta veya isim yaz:\n\n"
-                        "📌 Örnek: <code>+79001234567</code>\n"
-                        "📌 Örnek: <code>@durov</code>\n"
-                        "📌 Örnek: <code>ivan@mail.ru</code>\n\n"
-                        "<i>İptal: <code>iptal</code></i>",
+                        mobius_no_balance_text(uid),
+                        reply_markup=mobius_packages_kb(),
                         parse_mode="HTML",
                     )
-                    # register_step varsa onu kullan (spam korumalı), yoksa next_step
-                    try:
-                        register_step(bot_instance, m, lambda m: _process_mobius_search(m, bot_instance))
-                    except Exception:
-                        bot_instance.register_next_step_handler(m, lambda m: _process_mobius_search(m, bot_instance))
-                except Exception as e:
-                    print(f"[TG-OSINT SEARCH] {e}")
-                    try:
-                        bot_instance.send_message(call.message.chat.id, f"❌ Hata: <code>{e}</code>", parse_mode="HTML")
-                    except Exception:
-                        pass
+                    return
+                txt = (
+                    "🔍 <b>TELEGRAM OSINT</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "Hangi sorgu tipini kullanmak istersin?\n\n"
+                    "🤖 Auto — otomatik algıla\n"
+                    "📱 Telefon · ✈️ Telegram · 📘 VK\n"
+                    "👤 İsim · 📧 E-posta · 🧾 INN · 🛂 Pasaport"
+                )
+                try:
+                    bot_instance.edit_message_text(
+                        txt, call.message.chat.id, call.message.message_id,
+                        reply_markup=mobius_type_kb(), parse_mode="HTML",
+                    )
+                except Exception:
+                    bot_instance.send_message(
+                        call.message.chat.id, txt,
+                        reply_markup=mobius_type_kb(), parse_mode="HTML",
+                    )
                 return
+
+            if data.startswith("mobius_t_"):
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                st = data.replace("mobius_t_", "", 1)
+                if st == "auto":
+                    st = None
+                tip = _MOBIUS_TYPE_LABEL.get(st or "auto", "Auto")
+                allowed, _ = mobius_can_query(uid)
+                if not allowed:
+                    bot_instance.send_message(
+                        call.message.chat.id,
+                        mobius_no_balance_text(uid),
+                        reply_markup=mobius_packages_kb(),
+                        parse_mode="HTML",
+                    )
+                    return
+                m = bot_instance.send_message(
+                    call.message.chat.id,
+                    "🔍 <b>Telegram OSINT</b> · Tip: <b>%s</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "Sorguyu yaz:\n\n"
+                    "📌 <code>@username</code> · <code>+79001234567</code>\n"
+                    "📌 <code>isim soyisim</code> · <code>mail@x.com</code>\n\n"
+                    "<i>İptal: <code>iptal</code></i>" % (tip,),
+                    parse_mode="HTML",
+                )
+                _st = st
+                def _mobius_step(mm, _stype=_st):
+                    _process_mobius_search(mm, bot_instance, search_type=_stype)
+                try:
+                    register_step(bot_instance, m, _mobius_step)
+                except Exception:
+                    bot_instance.register_next_step_handler(m, _mobius_step)
+                return
+
 
             if data == "mobius_packages":
                 try:
                     bot_instance.answer_callback_query(call.id)
                 except Exception:
                     pass
+                bal = mobius_get_balance(uid)
+                txt = (
+                    "💎 <b>TELEGRAM OSINT PAKETLERİ</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"💰 Bakiye: <b>{bal}</b>\n\n"
+                    f"• {MOBIUS_PACKAGE_15} sorgu → <b>{MOBIUS_PRICE_15}⭐</b>\n"
+                    f"• {MOBIUS_PACKAGE_75} sorgu → <b>{MOBIUS_PRICE_75}⭐</b>\n"
+                    f"• {MOBIUS_PACKAGE_300} sorgu → <b>{MOBIUS_PRICE_300}⭐</b>\n"
+                    f"• {MOBIUS_PACKAGE_1000} sorgu → <b>{MOBIUS_PRICE_1000}⭐</b>"
+                )
                 try:
-                    bal = mobius_get_balance(uid)
-                    txt = (
-                        "💎 <b>TELEGRAM OSINT PAKETLERİ</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"💰 Bakiye: <b>{bal}</b>\n\n"
-                        f"• {MOBIUS_PACKAGE_15} sorgu → <b>{MOBIUS_PRICE_15}⭐</b>\n"
-                        f"• {MOBIUS_PACKAGE_75} sorgu → <b>{MOBIUS_PRICE_75}⭐</b>\n"
-                        f"• {MOBIUS_PACKAGE_300} sorgu → <b>{MOBIUS_PRICE_300}⭐</b>\n"
-                        f"• {MOBIUS_PACKAGE_1000} sorgu → <b>{MOBIUS_PRICE_1000}⭐</b>"
+                    bot_instance.edit_message_text(
+                        txt, call.message.chat.id, call.message.message_id,
+                        reply_markup=mobius_packages_kb(), parse_mode="HTML",
                     )
-                    try:
-                        bot_instance.edit_message_text(
-                            txt, call.message.chat.id, call.message.message_id,
-                            reply_markup=mobius_packages_kb(), parse_mode="HTML",
-                        )
-                    except Exception:
-                        bot_instance.send_message(
-                            call.message.chat.id, txt,
-                            reply_markup=mobius_packages_kb(), parse_mode="HTML",
-                        )
-                except Exception as e:
-                    print(f"[TG-OSINT PKG] {e}")
+                except Exception:
+                    bot_instance.send_message(
+                        call.message.chat.id, txt,
+                        reply_markup=mobius_packages_kb(), parse_mode="HTML",
+                    )
                 return
 
             if data == "mobius_stats":
@@ -8972,46 +9156,6 @@ def register_handlers(bot_instance):
                     bot_instance.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=mobius_kb(uid), parse_mode="HTML")
                 except Exception:
                     bot_instance.send_message(call.message.chat.id, txt, reply_markup=mobius_kb(uid), parse_mode="HTML")
-                return
-
-            if data == "mobius_search":
-                try:
-                    bot_instance.answer_callback_query(call.id)
-                except Exception:
-                    pass
-                allowed, _ = mobius_can_query(uid)
-                if not allowed:
-                    bot_instance.send_message(call.message.chat.id, mobius_no_balance_text(uid), reply_markup=mobius_packages_kb(), parse_mode="HTML")
-                    return
-                m = bot_instance.send_message(
-                    call.message.chat.id,
-                    "🔍 <b>Sorgu gir</b>\n"
-                    "Telefon, @username, e-posta, isim…\n"
-                    "<i>İptal: <code>iptal</code></i>",
-                    parse_mode="HTML",
-                )
-                bot_instance.register_next_step_handler(m, lambda m: _process_mobius_search(m, bot_instance))
-                return
-
-            if data == "mobius_packages":
-                try:
-                    bot_instance.answer_callback_query(call.id)
-                except Exception:
-                    pass
-                bal = mobius_get_balance(uid)
-                txt = (
-                    "💎 <b>TELEGRAM OSINT PAKETLERİ</b>\n"
-                    "━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"💰 Bakiye: <b>{bal}</b>\n\n"
-                    f"• {MOBIUS_PACKAGE_15} sorgu → <b>{MOBIUS_PRICE_15}⭐</b>\n"
-                    f"• {MOBIUS_PACKAGE_75} sorgu → <b>{MOBIUS_PRICE_75}⭐</b>\n"
-                    f"• {MOBIUS_PACKAGE_300} sorgu → <b>{MOBIUS_PRICE_300}⭐</b>\n"
-                    f"• {MOBIUS_PACKAGE_1000} sorgu → <b>{MOBIUS_PRICE_1000}⭐</b>"
-                )
-                try:
-                    bot_instance.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=mobius_packages_kb(), parse_mode="HTML")
-                except Exception:
-                    bot_instance.send_message(call.message.chat.id, txt, reply_markup=mobius_packages_kb(), parse_mode="HTML")
                 return
 
             if data == "mobius_stats":
