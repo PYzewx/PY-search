@@ -4246,6 +4246,9 @@ def tools_kb(user_id):
         _btn("SearchX 😈", "menu_lmnx", "primary"),
     )
     mk.add(
+        _btn("🔍 Mobius OSINT", "tool_mobius", "primary"),
+    )
+    mk.add(
         _btn("🌐 IP Bilgi", "tool_ipinfo", "primary"),
         _btn("🔎 DNS Sorgu", "tool_dns", "primary"),
         _btn("🚗 Plaka Sorgu", "tool_plaka", "primary"),
