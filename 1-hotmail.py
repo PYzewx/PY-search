@@ -8182,6 +8182,142 @@ def register_handlers(bot_instance):
                 try: bot_instance.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=tgid_kb(uid), parse_mode="HTML")
                 except: bot_instance.send_message(call.message.chat.id, txt, reply_markup=tgid_kb(uid), parse_mode="HTML")
                 return
+            # ═══ Telegram OSINT (Mobius API) ═══
+            if data == "tool_mobius":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                try:
+                    free_left = max(0, MOBIUS_FREE_LIMIT - mobius_get_free_used(uid))
+                    bal = mobius_get_balance(uid)
+                    if uid == ADMIN_ID:
+                        durum = "👑 Admin — Sınırsız"
+                    else:
+                        durum = f"🆓 Free: {free_left}/{MOBIUS_FREE_LIMIT}  |  💰 Bakiye: {bal}"
+                    txt = (
+                        "🔍 <b>TELEGRAM OSINT</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"📊 {durum}\n\n"
+                        "Telefon · @username · E-posta · İsim\n"
+                        "VK · INN · Pasaport ve daha fazlası.\n\n"
+                        f"🆓 Free: <b>{MOBIUS_FREE_LIMIT} hak</b>\n"
+                        f"💎 {MOBIUS_PACKAGE_15}→{MOBIUS_PRICE_15}⭐ · "
+                        f"{MOBIUS_PACKAGE_75}→{MOBIUS_PRICE_75}⭐\n"
+                        f"💎 {MOBIUS_PACKAGE_300}→{MOBIUS_PRICE_300}⭐ · "
+                        f"{MOBIUS_PACKAGE_1000}→{MOBIUS_PRICE_1000}⭐"
+                    )
+                    kb = mobius_kb(uid)
+                    try:
+                        bot_instance.edit_message_text(
+                            txt, call.message.chat.id, call.message.message_id,
+                            reply_markup=kb, parse_mode="HTML",
+                        )
+                    except Exception:
+                        bot_instance.send_message(
+                            call.message.chat.id, txt, reply_markup=kb, parse_mode="HTML",
+                        )
+                except Exception as e:
+                    print(f"[TG-OSINT MENU] {e}")
+                    try:
+                        bot_instance.send_message(
+                            call.message.chat.id,
+                            f"❌ Telegram OSINT menü hatası:\n<code>{e}</code>",
+                            parse_mode="HTML",
+                        )
+                    except Exception:
+                        pass
+                return
+
+            if data == "mobius_search":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                try:
+                    allowed, _ = mobius_can_query(uid)
+                    if not allowed:
+                        bot_instance.send_message(
+                            call.message.chat.id,
+                            mobius_no_balance_text(uid),
+                            reply_markup=mobius_packages_kb(),
+                            parse_mode="HTML",
+                        )
+                        return
+                    m = bot_instance.send_message(
+                        call.message.chat.id,
+                        "🔍 <b>Telegram OSINT — Sorgu</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n"
+                        "Telefon, @username, e-posta veya isim yaz:\n\n"
+                        "📌 Örnek: <code>+79001234567</code>\n"
+                        "📌 Örnek: <code>@durov</code>\n"
+                        "📌 Örnek: <code>ivan@mail.ru</code>\n\n"
+                        "<i>İptal: <code>iptal</code></i>",
+                        parse_mode="HTML",
+                    )
+                    # register_step varsa onu kullan (spam korumalı), yoksa next_step
+                    try:
+                        register_step(bot_instance, m, lambda m: _process_mobius_search(m, bot_instance))
+                    except Exception:
+                        bot_instance.register_next_step_handler(m, lambda m: _process_mobius_search(m, bot_instance))
+                except Exception as e:
+                    print(f"[TG-OSINT SEARCH] {e}")
+                    try:
+                        bot_instance.send_message(call.message.chat.id, f"❌ Hata: <code>{e}</code>", parse_mode="HTML")
+                    except Exception:
+                        pass
+                return
+
+            if data == "mobius_packages":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                try:
+                    bal = mobius_get_balance(uid)
+                    txt = (
+                        "💎 <b>TELEGRAM OSINT PAKETLERİ</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"💰 Bakiye: <b>{bal}</b>\n\n"
+                        f"• {MOBIUS_PACKAGE_15} sorgu → <b>{MOBIUS_PRICE_15}⭐</b>\n"
+                        f"• {MOBIUS_PACKAGE_75} sorgu → <b>{MOBIUS_PRICE_75}⭐</b>\n"
+                        f"• {MOBIUS_PACKAGE_300} sorgu → <b>{MOBIUS_PRICE_300}⭐</b>\n"
+                        f"• {MOBIUS_PACKAGE_1000} sorgu → <b>{MOBIUS_PRICE_1000}⭐</b>"
+                    )
+                    try:
+                        bot_instance.edit_message_text(
+                            txt, call.message.chat.id, call.message.message_id,
+                            reply_markup=mobius_packages_kb(), parse_mode="HTML",
+                        )
+                    except Exception:
+                        bot_instance.send_message(
+                            call.message.chat.id, txt,
+                            reply_markup=mobius_packages_kb(), parse_mode="HTML",
+                        )
+                except Exception as e:
+                    print(f"[TG-OSINT PKG] {e}")
+                return
+
+            if data == "mobius_stats":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                free_used = mobius_get_free_used(uid)
+                free_left = max(0, MOBIUS_FREE_LIMIT - free_used)
+                bal = mobius_get_balance(uid)
+                total = mobius_get_total(uid)
+                txt = (
+                    "📊 <b>TELEGRAM OSINT İSTATİSTİK</b>\n"
+                    f"🔍 Toplam: <b>{total}</b>\n"
+                    f"🆓 Free: <b>{free_used}</b>/{MOBIUS_FREE_LIMIT} (kalan {free_left})\n"
+                    f"💰 Bakiye: <b>{bal}</b>"
+                )
+                if uid == ADMIN_ID:
+                    txt += "\n👑 Admin — Sınırsız"
+                bot_instance.send_message(call.message.chat.id, txt, parse_mode="HTML")
+                return
+
             if data == "tgid_search":
                 try: bot_instance.answer_callback_query(call.id)
                 except: pass
