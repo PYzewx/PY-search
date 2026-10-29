@@ -115,6 +115,30 @@ LOG_AUTH = "@gaynotcu"
 # Yeni Log API (oncelikli)
 LOG_API_NEW = "https://logcuyum.pythonanywhere.com/log/site?site="
 
+
+# ── Vesika Sorgu (sadece yildiz, free yok) ──
+VESIKA_PACKAGE_5 = 5
+VESIKA_PACKAGE_15 = 15
+VESIKA_PACKAGE_30 = 30
+VESIKA_PRICE_5 = 99
+VESIKA_PRICE_15 = 249
+VESIKA_PRICE_30 = 449
+
+
+# ── Mobius Search OSINT ──
+MOBIUS_BASE_URL = "https://mobiusnet.cc.cd"
+MOBIUS_API_KEY = os.getenv("MOBIUS_API_KEY", "MOBIUS-IO-ha4DYfb54q7TeqwyOlRzz0ovkg-8c-ex8gdJ0aP0CRY").strip()
+MOBIUS_MIN_INTERVAL = 2.0
+MOBIUS_FREE_LIMIT = 1
+MOBIUS_PACKAGE_15 = 15
+MOBIUS_PACKAGE_75 = 75
+MOBIUS_PACKAGE_300 = 300
+MOBIUS_PACKAGE_1000 = 1000
+MOBIUS_PRICE_15 = 85
+MOBIUS_PRICE_75 = 364
+MOBIUS_PRICE_300 = 1012
+MOBIUS_PRICE_1000 = 3232
+
 # ── Combo Çekme (bakiye) ──
 COMBO_FREE_LIMIT = 2
 COMBO_FREE_MAX_LINES = 100
@@ -356,6 +380,11 @@ def db_init():
         id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT,
         target TEXT, status TEXT, detail TEXT, date TEXT)''')
 
+
+    c.execute("CREATE TABLE IF NOT EXISTS mobius_users (user_id INTEGER PRIMARY KEY, free_used INTEGER DEFAULT 0, query_balance INTEGER DEFAULT 0, total_queries INTEGER DEFAULT 0)")
+    c.execute("CREATE TABLE IF NOT EXISTS mobius_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, package TEXT, queries INTEGER, stars INTEGER, date TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS vesika_users (user_id INTEGER PRIMARY KEY, query_balance INTEGER DEFAULT 0, total_queries INTEGER DEFAULT 0)")
+    c.execute("CREATE TABLE IF NOT EXISTS vesika_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, package TEXT, queries INTEGER, stars INTEGER, date TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS combo_users (user_id INTEGER PRIMARY KEY, free_used INTEGER DEFAULT 0, query_balance INTEGER DEFAULT 0, total_queries INTEGER DEFAULT 0)")
     c.execute("CREATE TABLE IF NOT EXISTS combo_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, package TEXT, queries INTEGER, stars INTEGER, date TEXT)")
     c.execute('''CREATE TABLE IF NOT EXISTS referrals (
@@ -3681,6 +3710,475 @@ TOOL_PROMPTS = {
 }
 
 
+
+def vesika_init_user(user_id):
+    try:
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO vesika_users (user_id) VALUES (?)", (user_id,))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+def vesika_get_balance(user_id):
+    try:
+        vesika_init_user(user_id)
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute("SELECT query_balance FROM vesika_users WHERE user_id=?", (user_id,))
+        r = c.fetchone(); conn.close()
+        return (r[0] if r else 0) or 0
+    except Exception:
+        return 0
+
+def vesika_set_balance(user_id, val):
+    try:
+        vesika_init_user(user_id)
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute("UPDATE vesika_users SET query_balance=? WHERE user_id=?", (int(val), user_id))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+def vesika_add_balance(user_id, amount):
+    vesika_set_balance(user_id, vesika_get_balance(user_id) + int(amount))
+
+def vesika_use_query(user_id):
+    if user_id == ADMIN_ID:
+        return True
+    bal = vesika_get_balance(user_id)
+    if bal <= 0:
+        return False
+    vesika_set_balance(user_id, bal - 1)
+    try:
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute("UPDATE vesika_users SET total_queries=COALESCE(total_queries,0)+1 WHERE user_id=?", (user_id,))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+    return True
+
+def vesika_can_query(user_id):
+    if user_id == ADMIN_ID:
+        return True
+    return vesika_get_balance(user_id) > 0
+
+def vesika_packages_kb():
+    mk = InlineKeyboardMarkup(row_width=1)
+    mk.add(_btn(f"🪪 {VESIKA_PACKAGE_5} Vesika — {VESIKA_PRICE_5} ⭐", "vesika_buy_5", "primary"))
+    mk.add(_btn(f"🪪 {VESIKA_PACKAGE_15} Vesika — {VESIKA_PRICE_15} ⭐", "vesika_buy_15", "success"))
+    mk.add(_btn(f"🪪 {VESIKA_PACKAGE_30} Vesika — {VESIKA_PRICE_30} ⭐", "vesika_buy_30", "danger"))
+    mk.add(_btn("◀️ Türkiye Menü", "menu_turkey", "primary"))
+    return mk
+
+def vesika_no_balance_text(user_id):
+    bal = vesika_get_balance(user_id)
+    return (
+        "❌ <b>Vesika hakkınız yok!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        + f"💰 Bakiye: <b>{bal}</b>\n\n"
+        + "🪪 Vesika sadece yıldız ile alınır (free yok).\n\n"
+        + "💎 Paketler:\n"
+        + f"• {VESIKA_PACKAGE_5} sorgu → <b>{VESIKA_PRICE_5}⭐</b>\n"
+        + f"• {VESIKA_PACKAGE_15} sorgu → <b>{VESIKA_PRICE_15}⭐</b>\n"
+        + f"• {VESIKA_PACKAGE_30} sorgu → <b>{VESIKA_PRICE_30}⭐</b>"
+    )
+
+
+
+# ══════════════════════════════════════════════════════════════
+#  MOBIUS SEARCH OSINT
+# ══════════════════════════════════════════════════════════════
+_MOBIUS_LAST_TS = 0.0
+
+def mobius_init_user(user_id):
+    try:
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO mobius_users (user_id) VALUES (?)", (user_id,))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+def mobius_get(user_id, col):
+    try:
+        mobius_init_user(user_id)
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute(f"SELECT {col} FROM mobius_users WHERE user_id=?", (user_id,))
+        r = c.fetchone(); conn.close()
+        return r[0] if r else 0
+    except Exception:
+        return 0
+
+def mobius_set(user_id, col, val):
+    try:
+        mobius_init_user(user_id)
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute(f"UPDATE mobius_users SET {col}=? WHERE user_id=?", (val, user_id))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+def mobius_get_free_used(user_id):
+    return int(mobius_get(user_id, "free_used") or 0)
+
+def mobius_get_balance(user_id):
+    return int(mobius_get(user_id, "query_balance") or 0)
+
+def mobius_get_total(user_id):
+    return int(mobius_get(user_id, "total_queries") or 0)
+
+def mobius_can_query(user_id):
+    if user_id == ADMIN_ID:
+        return True, "admin"
+    if mobius_get_free_used(user_id) < MOBIUS_FREE_LIMIT:
+        return True, "free"
+    if mobius_get_balance(user_id) > 0:
+        return True, "balance"
+    return False, None
+
+def mobius_use_query(user_id):
+    if user_id == ADMIN_ID:
+        mobius_set(user_id, "total_queries", mobius_get_total(user_id) + 1)
+        return True, "admin"
+    free_used = mobius_get_free_used(user_id)
+    if free_used < MOBIUS_FREE_LIMIT:
+        mobius_set(user_id, "free_used", free_used + 1)
+        mobius_set(user_id, "total_queries", mobius_get_total(user_id) + 1)
+        return True, "free"
+    bal = mobius_get_balance(user_id)
+    if bal > 0:
+        mobius_set(user_id, "query_balance", bal - 1)
+        mobius_set(user_id, "total_queries", mobius_get_total(user_id) + 1)
+        return True, "balance"
+    return False, None
+
+def mobius_add_balance(user_id, amount):
+    mobius_set(user_id, "query_balance", mobius_get_balance(user_id) + int(amount))
+
+def mobius_packages_kb():
+    mk = InlineKeyboardMarkup(row_width=1)
+    mk.add(_btn(f"🔍 {MOBIUS_PACKAGE_15} Sorgu — {MOBIUS_PRICE_15} ⭐", "mobius_buy_15", "primary"))
+    mk.add(_btn(f"🔍 {MOBIUS_PACKAGE_75} Sorgu — {MOBIUS_PRICE_75} ⭐", "mobius_buy_75", "success"))
+    mk.add(_btn(f"🔍 {MOBIUS_PACKAGE_300} Sorgu — {MOBIUS_PRICE_300} ⭐", "mobius_buy_300", "primary"))
+    mk.add(_btn(f"🔍 {MOBIUS_PACKAGE_1000} Sorgu — {MOBIUS_PRICE_1000} ⭐", "mobius_buy_1000", "danger"))
+    mk.add(_btn("◀️ Geri", "tool_mobius", "danger"))
+    return mk
+
+def mobius_kb(user_id):
+    mk = InlineKeyboardMarkup(row_width=1)
+    free_left = max(0, MOBIUS_FREE_LIMIT - mobius_get_free_used(user_id))
+    bal = mobius_get_balance(user_id)
+    if user_id == ADMIN_ID:
+        durum = "👑 Admin — Sınırsız"
+    else:
+        durum = f"🆓 Free: {free_left}/{MOBIUS_FREE_LIMIT}  |  💰 Bakiye: {bal}"
+    mk.add(_btn(f"📊 {durum}", "noop"))
+    mk.add(_btn("🔍 Sorgu Yap", "mobius_search", "primary"))
+    mk.add(_btn("💎 Paket Satın Al", "mobius_packages", "success"))
+    mk.add(_btn("📊 İstatistiklerim", "mobius_stats", "primary"))
+    mk.add(_btn("◀️ Geri", "goto_tools", "danger"))
+    return mk
+
+def mobius_no_balance_text(user_id):
+    free_left = max(0, MOBIUS_FREE_LIMIT - mobius_get_free_used(user_id))
+    bal = mobius_get_balance(user_id)
+    return (
+        "❌ <b>Mobius sorgu hakkın kalmadı!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🆓 Free: <b>{free_left}</b>/{MOBIUS_FREE_LIMIT}\n"
+        f"💰 Bakiye: <b>{bal}</b>\n\n"
+        "💎 Paketler:\n"
+        f"• {MOBIUS_PACKAGE_15} → <b>{MOBIUS_PRICE_15}⭐</b>\n"
+        f"• {MOBIUS_PACKAGE_75} → <b>{MOBIUS_PRICE_75}⭐</b>\n"
+        f"• {MOBIUS_PACKAGE_300} → <b>{MOBIUS_PRICE_300}⭐</b>\n"
+        f"• {MOBIUS_PACKAGE_1000} → <b>{MOBIUS_PRICE_1000}⭐</b>"
+    )
+
+def _mobius_rate_wait():
+    global _MOBIUS_LAST_TS
+    now = time.time()
+    wait = MOBIUS_MIN_INTERVAL - (now - _MOBIUS_LAST_TS)
+    if wait > 0:
+        time.sleep(wait)
+    _MOBIUS_LAST_TS = time.time()
+
+def mobius_api_request(path, method="GET", json_body=None, retries=2):
+    url = MOBIUS_BASE_URL.rstrip("/") + path
+    headers = {"X-API-Key": MOBIUS_API_KEY}
+    data = None
+    if json_body is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            _mobius_rate_wait()
+            r = requests.request(method, url, headers=headers, data=data, timeout=35, verify=False)
+            if r.status_code == 429 and attempt < retries:
+                time.sleep(5)
+                continue
+            try:
+                return r.status_code, r.json()
+            except Exception:
+                return r.status_code, {"raw": (r.text or "")[:3000]}
+        except Exception as e:
+            last_err = str(e)
+            if attempt < retries:
+                time.sleep(2)
+                continue
+            return 0, {"error": last_err}
+    return 0, {"error": last_err or "Bilinmeyen hata"}
+
+def mobius_search(query, search_type=None):
+    body = {"query": str(query).strip()}
+    if search_type:
+        body["type"] = search_type
+    return mobius_api_request("/api/v1/search", method="POST", json_body=body)
+
+def mobius_format_tr(resp, aranan):
+    if not isinstance(resp, dict):
+        return f"❌ Geçersiz yanıt:\n<code>{html.escape(str(resp)[:800])}</code>"
+    lines = []
+    lines.append("╔" + "═" * 28 + "╗")
+    lines.append("║   🔍  MOBIUS SEARCH OSINT   ║")
+    lines.append("╚" + "═" * 28 + "╝")
+    lines.append("")
+    lines.append(f"🎯 <b>Aranan</b>: <code>{html.escape(str(aranan))}</code>")
+    q = resp.get("query")
+    if q and str(q) != str(aranan):
+        lines.append(f"📌 Sorgu: <code>{html.escape(str(q))}</code>")
+    kind = resp.get("kind") or resp.get("type")
+    if kind:
+        lines.append(f"📂 Tür: <b>{html.escape(str(kind))}</b>")
+    if resp.get("elapsed_seconds") is not None:
+        lines.append(f"⏱ Süre: <b>{resp.get('elapsed_seconds')}</b> sn")
+    if resp.get("results_count") is not None:
+        lines.append(f"📊 Bulunan: <b>{resp.get('results_count')}</b>")
+    services = resp.get("services_used")
+    if services:
+        if isinstance(services, list):
+            lines.append(f"🔌 Servisler: {html.escape(', '.join(map(str, services)))}")
+        else:
+            lines.append(f"🔌 Servisler: {html.escape(str(services))}")
+    lines.append("")
+    lines.append("━" * 28)
+
+    def _dump_dict(d, indent=0):
+        out = []
+        pad = "  " * indent
+        if not isinstance(d, dict):
+            out.append(f"{pad}• {html.escape(str(d))}")
+            return out
+        skip = {"success", "raw", "developer", "telegram", "website", "auth"}
+        for k, v in d.items():
+            if k is None or str(k).lower() in skip:
+                continue
+            if v is None or v == "" or v == [] or v == {}:
+                continue
+            key = html.escape(str(k))
+            if isinstance(v, dict):
+                out.append(f"{pad}▸ <b>{key}</b>")
+                out.extend(_dump_dict(v, indent + 1))
+            elif isinstance(v, list):
+                out.append(f"{pad}▸ <b>{key}</b> ({len(v)})")
+                for i, item in enumerate(v[:12], 1):
+                    if isinstance(item, dict):
+                        out.append(f"{pad}  <b>#{i}</b>")
+                        out.extend(_dump_dict(item, indent + 2))
+                    else:
+                        out.append(f"{pad}  {i}. {html.escape(str(item))}")
+                if len(v) > 12:
+                    out.append(f"{pad}  … +{len(v) - 12} kayıt")
+            else:
+                out.append(f"{pad}• <b>{key}</b>: <code>{html.escape(str(v))}</code>")
+        return out
+
+    groups = resp.get("groups")
+    results = resp.get("results")
+    found_any = False
+    if isinstance(groups, dict) and groups:
+        found_any = True
+        for gname, gdata in groups.items():
+            lines.append("")
+            lines.append(f"📦 <b>{html.escape(str(gname))}</b>")
+            if isinstance(gdata, dict):
+                if gdata.get("service"):
+                    lines.append(f"  🏷️ {html.escape(str(gdata['service']))}")
+                if gdata.get("count") is not None:
+                    lines.append(f"  📊 Kayıt: <b>{gdata['count']}</b>")
+                records = gdata.get("records") or []
+                for i, rec in enumerate(records[:15], 1):
+                    lines.append(f"  ── <b>#{i}</b> ──")
+                    if isinstance(rec, dict):
+                        lines.extend(_dump_dict(rec, 1))
+                    else:
+                        lines.append(f"  • {html.escape(str(rec))}")
+                if len(records) > 15:
+                    lines.append(f"  … +{len(records) - 15} kayıt")
+            else:
+                lines.append(f"  {html.escape(str(gdata))}")
+    if isinstance(results, dict) and results:
+        found_any = True
+        for source, sdata in results.items():
+            lines.append("")
+            lines.append(f"📡 <b>{html.escape(str(source))}</b>")
+            if not isinstance(sdata, dict):
+                lines.append(f"  {html.escape(str(sdata))}")
+                continue
+            label = sdata.get("source") or sdata.get("service")
+            if label and str(label) != str(source):
+                lines.append(f"  🏷️ Kaynak: {html.escape(str(label))}")
+            stype = sdata.get("stype") or sdata.get("kind_tag")
+            if stype:
+                lines.append(f"  📂 Tür: {html.escape(str(stype))}")
+            target = sdata.get("target")
+            if target:
+                lines.append(f"  🎯 Hedef: <code>{html.escape(str(target))}</code>")
+            inner = sdata.get("result")
+            if isinstance(inner, dict):
+                if inner.get("status") is not None:
+                    lines.append(f"  ✅ Durum: {html.escape(str(inner.get('status')))}")
+                data = inner.get("data")
+                if isinstance(data, dict):
+                    if "results_count" in data:
+                        lines.append(f"  📊 Toplam: <b>{data['results_count']}</b>")
+                    sf = data.get("services_found")
+                    if sf:
+                        lines.append(f"  🔌 {html.escape(', '.join(map(str, sf)) if isinstance(sf, list) else str(sf))}")
+                    inner_results = data.get("results")
+                    if isinstance(inner_results, dict):
+                        for key, items in inner_results.items():
+                            if isinstance(items, list):
+                                lines.append(f"  ▸ <b>{html.escape(str(key))}</b> ({len(items)})")
+                                for i, item in enumerate(items[:8], 1):
+                                    if isinstance(item, dict):
+                                        lines.append(f"    ── #{i} ──")
+                                        lines.extend(_dump_dict(item, 2))
+                                    else:
+                                        lines.append(f"    {i}. {html.escape(str(item))}")
+                                if len(items) > 8:
+                                    lines.append(f"    … +{len(items) - 8}")
+                            else:
+                                lines.append(f"  • <b>{html.escape(str(key))}</b>: {html.escape(str(items))}")
+                    else:
+                        lines.extend(_dump_dict(data, 1))
+                else:
+                    lines.extend(_dump_dict(inner, 1))
+            else:
+                lines.extend(_dump_dict(sdata, 1))
+    if not found_any and not groups and not results:
+        useful = {k: v for k, v in resp.items() if k not in (
+            "success", "query", "kind", "elapsed_seconds", "results_count",
+            "services_used", "groups", "results", "search_id", "report_url"
+        )}
+        if useful:
+            lines.append("")
+            lines.extend(_dump_dict(useful))
+        else:
+            lines.append("")
+            lines.append("⚠️ Kayıt bulunamadı veya boş sonuç.")
+    if resp.get("search_id"):
+        lines.append("")
+        lines.append(f"🆔 search_id: <code>{html.escape(str(resp.get('search_id')))}</code>")
+    if resp.get("report_url"):
+        lines.append(f"🔗 Rapor: {html.escape(str(resp.get('report_url')))}")
+    lines.append("")
+    lines.append("━" * 28)
+    lines.append(f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
+    lines.append("🤖 Cyber Search | @hackledin")
+    text = "\n".join(lines)
+    if len(text) > 3900:
+        text = text[:3900] + "\n\n… (kısaltıldı)"
+    return text
+
+def _process_mobius_search(msg, bot_instance, search_type=None):
+    uid = msg.from_user.id
+    query = (msg.text or "").strip()
+    if not query:
+        bot_instance.reply_to(msg, "❌ Geçersiz sorgu!")
+        return
+    if query.lower() in ("iptal", "cancel", "q", "çık", "cik"):
+        bot_instance.reply_to(msg, "✅ İptal edildi.")
+        return
+    allowed, source = mobius_can_query(uid)
+    if not allowed:
+        bot_instance.reply_to(msg, mobius_no_balance_text(uid), reply_markup=mobius_packages_kb(), parse_mode="HTML")
+        return
+    wait = bot_instance.reply_to(msg, f"⏳ <code>{html.escape(query)}</code> aranıyor...", parse_mode="HTML")
+    code, data = mobius_search(query, search_type)
+    if code != 200 or not isinstance(data, dict):
+        err = data.get("error") if isinstance(data, dict) else data
+        try:
+            bot_instance.edit_message_text(
+                f"❌ <b>Sorgu başarısız</b>\nHTTP: <code>{code}</code>\n{html.escape(str(err)[:400])}",
+                msg.chat.id, wait.message_id, parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        return
+    mobius_use_query(uid)
+    txt = mobius_format_tr(data, query)
+    try:
+        bot_instance.delete_message(msg.chat.id, wait.message_id)
+    except Exception:
+        pass
+    if len(txt) > 3500:
+        try:
+            import io
+            raw = re.sub(r"<[^>]+>", "", txt)
+            bio = io.BytesIO(raw.encode("utf-8"))
+            bio.name = f"mobius_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            bot_instance.send_document(
+                msg.chat.id, bio,
+                caption=f"🔍 Mobius · <code>{html.escape(query)}</code>\n💰 Kalan: <b>{mobius_get_balance(uid)}</b>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            bot_instance.send_message(msg.chat.id, txt[:4000], parse_mode="HTML")
+    else:
+        bot_instance.send_message(msg.chat.id, txt, parse_mode="HTML")
+    free_left = max(0, MOBIUS_FREE_LIMIT - mobius_get_free_used(uid))
+    bot_instance.send_message(
+        msg.chat.id,
+        f"🆓 {free_left}/{MOBIUS_FREE_LIMIT} · 💰 {mobius_get_balance(uid)}",
+        reply_markup=mobius_kb(uid),
+    )
+
+def _admin_mobius_give(msg, bot_instance):
+    if msg.from_user.id != ADMIN_ID:
+        return
+    try:
+        parts = msg.text.strip().split()
+        target = int(parts[0]); amount = int(parts[1])
+        if amount <= 0:
+            raise ValueError
+    except Exception:
+        bot_instance.reply_to(msg, "❌ <code>USER_ID MIKTAR</code>", parse_mode="HTML")
+        return
+    add_user(target, "", "")
+    mobius_init_user(target)
+    mobius_add_balance(target, amount)
+    bal = mobius_get_balance(target)
+    bot_instance.reply_to(msg, f"✅ +{amount} Mobius: <code>{target}</code>\n💰 Bakiye: <b>{bal}</b>", parse_mode="HTML")
+    try:
+        bot_instance.send_message(target, f"🎁 Admin sana <b>+{amount}</b> Mobius hakkı verdi!\n💰 Bakiye: <b>{bal}</b>", parse_mode="HTML")
+    except Exception:
+        pass
+
+def _admin_mobius_take(msg, bot_instance):
+    if msg.from_user.id != ADMIN_ID:
+        return
+    try:
+        parts = msg.text.strip().split()
+        target = int(parts[0]); amount = int(parts[1])
+        if amount <= 0:
+            raise ValueError
+    except Exception:
+        bot_instance.reply_to(msg, "❌ <code>USER_ID MIKTAR</code>", parse_mode="HTML")
+        return
+    new_bal = max(0, mobius_get_balance(target) - amount)
+    mobius_set(target, "query_balance", new_bal)
+    bot_instance.reply_to(msg, f"✅ -{amount} Mobius: <code>{target}</code>\n💰 Yeni: <b>{new_bal}</b>", parse_mode="HTML")
+
+
 TURKIYE_API = {
     "tc": {"url": "https://ajaxsystems.fun/tc.php?tc={tc}", "icon": "🆔", "tr": "TC Sorgu", "en": "TC Query", "ar": "استعلام TC", "params": ["tc"]},
     "tcpro": {"url": "https://ajaxsystems.fun/tcpro.php?tc={tc}", "icon": "🔍", "tr": "TC Pro Sorgu", "en": "TC Pro", "ar": "TC Pro", "params": ["tc"]},
@@ -3694,6 +4192,8 @@ TURKIYE_API = {
     "tapu": {"url": "https://ajaxsystems.fun/tapu.php?tc={tc}", "icon": "🏠", "tr": "Tapu Sorgu", "en": "Title Deed", "ar": "الطابو", "params": ["tc"]},
     "adaparsel": {"url": "https://ajaxsystems.fun/adaparsel.php?il={il}&ilce={ilce}", "icon": "🗺️", "tr": "Ada Parsel", "en": "Block Parcel", "ar": "القطعة", "params": ["il", "ilce"]},
     "adres": {"url": "https://apiv2.ajaxsystems.fun/adres.php?tc={tc}", "icon": "🏠", "tr": "Adres Sorgu", "en": "Address", "ar": "العنوان", "params": ["tc"]},
+    "sgk": {"url": "https://solidarksystems.alwaysdata.net/sgk.php?tc={tc}", "icon": "🏥", "tr": "SGK Sorgu", "en": "SGK Query", "ar": "SGK", "params": ["tc"]},
+    "vesika": {"url": "https://solidarksystems.alwaysdata.net/vesika.php?tc={tc}", "icon": "🪪", "tr": "Vesika Sorgu", "en": "ID Photo", "ar": "صورة", "params": ["tc"], "paid": True},
 }
 
 TURKEY_PROMPTS = {
@@ -3710,6 +4210,8 @@ TURKEY_PROMPTS = {
         "tapu": "🏠 TC Kimlik Numarası girin (11 haneli):",
         "adaparsel": "🗺️ İl,İlçe girin (Örn: İSTANBUL,KADIKÖY):",
         "adres": "🏠 Adres Sorgu\nTC Kimlik Numarası girin (11 haneli):",
+        "sgk": "🏥 TC Kimlik Numarası girin (11 haneli):",
+        "vesika": "🪪 Vesika — TC Kimlik Numarası (11 haneli):",
     },
     "en": {
         "tc": "🆔 Enter TC ID (11 digits):", "tcpro": "🔍 Enter TC ID:",
@@ -3717,7 +4219,7 @@ TURKEY_PROMPTS = {
         "ailepro": "👨‍👩‍👧‍👦 Enter TC ID:", "sulale": "🌳 Enter TC ID:",
         "tcgsm": "📱 Enter TC ID:", "gsmtc": "📞 Enter GSM:",
         "eokul": "🎓 Enter TC ID:", "tapu": "🏠 Enter TC ID:",
-        "adaparsel": "🗺️ Enter Province,District:", "adres": "🏠 Enter TC ID:",
+        "adaparsel": "🗺️ Enter Province,District:", "adres": "🏠 Enter TC ID:", "sgk": "🏥 Enter TC ID:", "vesika": "🪪 Enter TC ID (photo):",
     },
     "ar": {
         "tc": "🆔 أدخل رقم الهوية:", "tcpro": "🔍 أدخل رقم الهوية:",
@@ -3725,7 +4227,7 @@ TURKEY_PROMPTS = {
         "ailepro": "👨‍👩‍👧‍👦 أدخل رقم الهوية:", "sulale": "🌳 أدخل رقم الهوية:",
         "tcgsm": "📱 أدخل رقم الهوية:", "gsmtc": "📞 أدخل GSM:",
         "eokul": "🎓 أدخل رقم الهوية:", "tapu": "🏠 أدخل رقم الهوية:",
-        "adaparsel": "🗺️ المحافظة,المنطقة:", "adres": "🏠 استعلام العنوان:",
+        "adaparsel": "🗺️ المحافظة,المنطقة:", "adres": "🏠 استعلام العنوان:", "sgk": "🏥 أدخل رقم الهوية:", "vesika": "🪪 صورة الهوية:",
     },
 }
 
@@ -4106,6 +4608,8 @@ def turkey_kb(user_id):
     )
     mk.add(_btn(lbl("adaparsel"), "tr_adaparsel", "success"))
     mk.add(_btn(lbl("adres"), "tr_adres", "primary"))
+    mk.add(_btn(lbl("sgk"), "tr_sgk", "success"))
+    mk.add(_btn("🪪 Vesika Sorgu ⭐", "tr_vesika", "danger"))
     mk.add(
         _btn("Araçlar", "goto_tools", "primary"),
         _btn("🏠 Ana Menü", "goto_home", "success"),
@@ -6698,6 +7202,10 @@ def register_handlers(bot_instance):
             _btn("➖ TG-ID Bakiye Al", "adm_tgid_take", "danger"),
             _btn("📦 Combo Bakiye Ver", "adm_combo_give", "success"),
             _btn("➖ Combo Bakiye Al", "adm_combo_take", "danger"),
+            _btn("🪪 Vesika Bakiye Ver", "adm_vesika_give", "success"),
+            _btn("➖ Vesika Bakiye Al", "adm_vesika_take", "danger"),
+            _btn("🔍 Mobius Bakiye Ver", "adm_mobius_give", "success"),
+            _btn("➖ Mobius Bakiye Al", "adm_mobius_take", "danger"),
             _btn("📋 TG-ID Logları", "adm_tgid_logs", "primary"),
             _btn("💰 TG-ID Satın Almalar", "adm_tgid_purchases", "primary"),
             _btn("📂 LOG Premium Ver", "adm_log_give", "success"),
@@ -6807,6 +7315,26 @@ def register_handlers(bot_instance):
                 _admin_sms_give_user(msg, bot_instance)
                 return
             
+            
+            
+            if action == "adm_mobius_give":
+                USER_STATES.pop(uid, None)
+                _admin_mobius_give(msg, bot_instance)
+                return
+            if action == "adm_mobius_take":
+                USER_STATES.pop(uid, None)
+                _admin_mobius_take(msg, bot_instance)
+                return
+
+            if action == "adm_vesika_give":
+                USER_STATES.pop(uid, None)
+                _admin_vesika_give(msg, bot_instance)
+                return
+            if action == "adm_vesika_take":
+                USER_STATES.pop(uid, None)
+                _admin_vesika_take(msg, bot_instance)
+                return
+
             if action == "adm_combo_give":
                 USER_STATES.pop(uid, None)
                 _admin_combo_give(msg, bot_instance)
@@ -8166,11 +8694,33 @@ def register_handlers(bot_instance):
                 return
             if data.startswith("tr_"):
                 key = data[3:]
+                if key == "vesika" and not vesika_can_query(uid) and uid != ADMIN_ID:
+                    try:
+                        bot_instance.answer_callback_query(call.id)
+                    except Exception:
+                        pass
+                    bot_instance.send_message(
+                        call.message.chat.id,
+                        vesika_no_balance_text(uid),
+                        reply_markup=vesika_packages_kb(),
+                        parse_mode="HTML",
+                    )
+                    return
                 prompt = TURKEY_PROMPTS.get(lang(uid), TURKEY_PROMPTS["tr"]).get(key, s(uid, "enter_val"))
-                m = bot_instance.send_message(call.message.chat.id, s(uid, "tr_ask", prompt=prompt))
-                register_step(bot_instance, m, lambda m: _process_turkey(m, key, bot_instance))
-                try: bot_instance.answer_callback_query(call.id)
-                except: pass
+                ask = s(uid, "tr_ask", prompt=prompt)
+                if key == "vesika":
+                    ask = (
+                        str(prompt) + "\n"
+                        + "━━━━━━━━━━━━━━━━━━━━━\n"
+                        + f"💰 Bakiye: <b>{vesika_get_balance(uid)}</b>\n"
+                        + "🪪 Sonuç fotoğraf olarak gelir."
+                    )
+                m = bot_instance.send_message(call.message.chat.id, ask, parse_mode="HTML")
+                register_step(bot_instance, m, lambda m, k=key: _process_turkey(m, k, bot_instance))
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
                 return
             if data.startswith("ls_"):
                 if not is_premium_osint(uid):
@@ -8258,6 +8808,187 @@ def register_handlers(bot_instance):
                     bot_instance.send_message(call.message.chat.id, txt, reply_markup=combo_packages_kb(), parse_mode="HTML")
                 return
 
+            
+            
+            if data == "tool_mobius":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                free_left = max(0, MOBIUS_FREE_LIMIT - mobius_get_free_used(uid))
+                bal = mobius_get_balance(uid)
+                durum = "👑 Admin — Sınırsız" if uid == ADMIN_ID else f"🆓 Free: {free_left}/{MOBIUS_FREE_LIMIT} | 💰 {bal}"
+                txt = (
+                    "🔍 <b>MOBIUS SEARCH OSINT</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📊 {durum}\n\n"
+                    "Telefon · Telegram · VK · FIO · E-posta\n"
+                    "INN · Pasaport ve daha fazlası.\n\n"
+                    f"💎 {MOBIUS_PACKAGE_15}→{MOBIUS_PRICE_15}⭐ · "
+                    f"{MOBIUS_PACKAGE_75}→{MOBIUS_PRICE_75}⭐\n"
+                    f"{MOBIUS_PACKAGE_300}→{MOBIUS_PRICE_300}⭐ · "
+                    f"{MOBIUS_PACKAGE_1000}→{MOBIUS_PRICE_1000}⭐"
+                )
+                try:
+                    bot_instance.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=mobius_kb(uid), parse_mode="HTML")
+                except Exception:
+                    bot_instance.send_message(call.message.chat.id, txt, reply_markup=mobius_kb(uid), parse_mode="HTML")
+                return
+
+            if data == "mobius_search":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                allowed, _ = mobius_can_query(uid)
+                if not allowed:
+                    bot_instance.send_message(call.message.chat.id, mobius_no_balance_text(uid), reply_markup=mobius_packages_kb(), parse_mode="HTML")
+                    return
+                m = bot_instance.send_message(
+                    call.message.chat.id,
+                    "🔍 <b>Sorgu gir</b>\n"
+                    "Telefon, @username, e-posta, isim…\n"
+                    "<i>İptal: <code>iptal</code></i>",
+                    parse_mode="HTML",
+                )
+                bot_instance.register_next_step_handler(m, lambda m: _process_mobius_search(m, bot_instance))
+                return
+
+            if data == "mobius_packages":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                bal = mobius_get_balance(uid)
+                txt = (
+                    "💎 <b>MOBIUS PAKETLERİ</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"💰 Bakiye: <b>{bal}</b>\n\n"
+                    f"• {MOBIUS_PACKAGE_15} sorgu → <b>{MOBIUS_PRICE_15}⭐</b>\n"
+                    f"• {MOBIUS_PACKAGE_75} sorgu → <b>{MOBIUS_PRICE_75}⭐</b>\n"
+                    f"• {MOBIUS_PACKAGE_300} sorgu → <b>{MOBIUS_PRICE_300}⭐</b>\n"
+                    f"• {MOBIUS_PACKAGE_1000} sorgu → <b>{MOBIUS_PRICE_1000}⭐</b>"
+                )
+                try:
+                    bot_instance.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=mobius_packages_kb(), parse_mode="HTML")
+                except Exception:
+                    bot_instance.send_message(call.message.chat.id, txt, reply_markup=mobius_packages_kb(), parse_mode="HTML")
+                return
+
+            if data == "mobius_stats":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                free_used = mobius_get_free_used(uid)
+                free_left = max(0, MOBIUS_FREE_LIMIT - free_used)
+                bal = mobius_get_balance(uid)
+                total = mobius_get_total(uid)
+                txt = (
+                    "📊 <b>MOBIUS İSTATİSTİK</b>\n"
+                    f"🔍 Toplam: <b>{total}</b>\n"
+                    f"🆓 Free: <b>{free_used}</b>/{MOBIUS_FREE_LIMIT} (kalan {free_left})\n"
+                    f"💰 Bakiye: <b>{bal}</b>"
+                )
+                if uid == ADMIN_ID:
+                    txt += "\n👑 Admin — Sınırsız"
+                bot_instance.send_message(call.message.chat.id, txt, parse_mode="HTML")
+                return
+
+            if data.startswith("mobius_buy_"):
+                pkg = data.replace("mobius_buy_", "")
+                pkg_map = {
+                    "15": (MOBIUS_PACKAGE_15, MOBIUS_PRICE_15, "15 Mobius"),
+                    "75": (MOBIUS_PACKAGE_75, MOBIUS_PRICE_75, "75 Mobius"),
+                    "300": (MOBIUS_PACKAGE_300, MOBIUS_PRICE_300, "300 Mobius"),
+                    "1000": (MOBIUS_PACKAGE_1000, MOBIUS_PRICE_1000, "1000 Mobius"),
+                }
+                if pkg not in pkg_map:
+                    try:
+                        bot_instance.answer_callback_query(call.id, "❌ Geçersiz!", show_alert=True)
+                    except Exception:
+                        pass
+                    return
+                qty, stars, label = pkg_map[pkg]
+                prices = [LabeledPrice(label=label, amount=stars)]
+                try:
+                    bot_instance.send_invoice(
+                        chat_id=call.message.chat.id,
+                        title=f"🔍 {label}",
+                        description=f"{qty} Mobius OSINT sorgu hakkı",
+                        invoice_payload=f"mobius_{pkg}",
+                        provider_token="",
+                        currency="XTR",
+                        prices=prices,
+                    )
+                    bot_instance.answer_callback_query(call.id, "✅ Fatura!")
+                except Exception as e:
+                    try:
+                        bot_instance.answer_callback_query(call.id, f"❌ {e}", show_alert=True)
+                    except Exception:
+                        pass
+                return
+
+            if data == "vesika_packages":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                bal = vesika_get_balance(uid)
+                txt = (
+                    "🪪 <b>VESİKA PAKETLERİ</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    + f"💰 Bakiye: <b>{bal}</b>\n\n"
+                    + "Free yok — sadece yıldız.\n"
+                    + f"• {VESIKA_PACKAGE_5} → {VESIKA_PRICE_5}⭐\n"
+                    + f"• {VESIKA_PACKAGE_15} → {VESIKA_PRICE_15}⭐\n"
+                    + f"• {VESIKA_PACKAGE_30} → {VESIKA_PRICE_30}⭐"
+                )
+                try:
+                    bot_instance.edit_message_text(
+                        txt, call.message.chat.id, call.message.message_id,
+                        reply_markup=vesika_packages_kb(), parse_mode="HTML",
+                    )
+                except Exception:
+                    bot_instance.send_message(
+                        call.message.chat.id, txt,
+                        reply_markup=vesika_packages_kb(), parse_mode="HTML",
+                    )
+                return
+
+            if data.startswith("vesika_buy_"):
+                pkg = data.replace("vesika_buy_", "")
+                pkg_map = {
+                    "5": (VESIKA_PACKAGE_5, VESIKA_PRICE_5, "5 Vesika"),
+                    "15": (VESIKA_PACKAGE_15, VESIKA_PRICE_15, "15 Vesika"),
+                    "30": (VESIKA_PACKAGE_30, VESIKA_PRICE_30, "30 Vesika"),
+                }
+                if pkg not in pkg_map:
+                    try:
+                        bot_instance.answer_callback_query(call.id, "❌ Geçersiz!", show_alert=True)
+                    except Exception:
+                        pass
+                    return
+                qty, stars, label = pkg_map[pkg]
+                prices = [LabeledPrice(label=label, amount=stars)]
+                try:
+                    bot_instance.send_invoice(
+                        chat_id=call.message.chat.id,
+                        title=f"🪪 {label}",
+                        description=f"{qty} vesika sorgu hakkı",
+                        invoice_payload=f"vesika_{pkg}",
+                        provider_token="",
+                        currency="XTR",
+                        prices=prices,
+                    )
+                    bot_instance.answer_callback_query(call.id, "✅ Fatura!")
+                except Exception as e:
+                    try:
+                        bot_instance.answer_callback_query(call.id, f"❌ {e}", show_alert=True)
+                    except Exception:
+                        pass
+                return
+
             if data.startswith("combo_buy_"):
                 pkg = data.replace("combo_buy_", "")
                 pkg_map = {
@@ -8331,6 +9062,55 @@ def register_handlers(bot_instance):
             return
         username = msg.from_user.username or msg.from_user.first_name or str(uid)
         payload = msg.successful_payment.invoice_payload
+        
+        
+        if payload.startswith("mobius_"):
+            pkg = payload.replace("mobius_", "")
+            pkg_map = {
+                "15": (MOBIUS_PACKAGE_15, MOBIUS_PRICE_15, "15 Mobius"),
+                "75": (MOBIUS_PACKAGE_75, MOBIUS_PRICE_75, "75 Mobius"),
+                "300": (MOBIUS_PACKAGE_300, MOBIUS_PRICE_300, "300 Mobius"),
+                "1000": (MOBIUS_PACKAGE_1000, MOBIUS_PRICE_1000, "1000 Mobius"),
+            }
+            if pkg in pkg_map:
+                qty, stars, label = pkg_map[pkg]
+                mobius_add_balance(uid, qty)
+                bot_instance.reply_to(
+                    msg,
+                    "🎉 <b>Ödeme Başarılı!</b>\n"
+                    f"🔍 {label}\n"
+                    f"➕ +{qty} hak\n"
+                    f"💰 Bakiye: <b>{mobius_get_balance(uid)}</b>",
+                    parse_mode="HTML",
+                )
+                try:
+                    bot_instance.send_message(ADMIN_ID, f"💰 MOBIUS SATIN ALMA\n👤 @{username}\n📦 {label} — {stars}⭐")
+                except Exception:
+                    pass
+            return
+        if payload.startswith("vesika_"):
+            pkg = payload.replace("vesika_", "")
+            pkg_map = {
+                "5": (VESIKA_PACKAGE_5, VESIKA_PRICE_5, "5 Vesika"),
+                "15": (VESIKA_PACKAGE_15, VESIKA_PRICE_15, "15 Vesika"),
+                "30": (VESIKA_PACKAGE_30, VESIKA_PRICE_30, "30 Vesika"),
+            }
+            if pkg in pkg_map:
+                qty, stars, label = pkg_map[pkg]
+                vesika_add_balance(uid, qty)
+                bot_instance.reply_to(
+                    msg,
+                    "🎉 <b>Ödeme Başarılı!</b>\n"
+                    f"🪪 {label}\n"
+                    f"➕ +{qty} vesika hakkı\n"
+                    f"💰 Bakiye: <b>{vesika_get_balance(uid)}</b>",
+                    parse_mode="HTML",
+                )
+                try:
+                    bot_instance.send_message(ADMIN_ID, f"💰 VESİKA SATIN ALMA\n👤 @{username}\n📦 {label} — {stars}⭐")
+                except Exception:
+                    pass
+            return
         if payload.startswith("combo_"):
             pkg = payload.replace("combo_", "")
             pkg_map = {
@@ -9531,43 +10311,166 @@ def _admin_sx_give_user(msg, bot_instance, days=30):
 
 def _process_turkey(msg, tool, bot_instance):
     uid = msg.from_user.id
-    param = msg.text.strip()
+    param = (msg.text or "").strip()
     l = lang(uid)
-    if tool in ("tc","tcpro","aile","ailepro","sulale","tcgsm","eokul","tapu","adres"):
+    if tool in ("tc", "tcpro", "aile", "ailepro", "sulale", "tcgsm", "eokul", "tapu", "adres", "sgk", "vesika"):
         if not (param.isdigit() and len(param) == 11):
-            bot_instance.reply_to(msg, s(uid, "invalid_tc")); return
+            bot_instance.reply_to(msg, s(uid, "invalid_tc"))
+            return
     elif tool == "gsmtc":
         clean = re.sub(r"\D", "", param).lstrip("0")
         if not (clean.isdigit() and len(clean) == 10):
-            bot_instance.reply_to(msg, s(uid, "invalid_gsm")); return
+            bot_instance.reply_to(msg, s(uid, "invalid_gsm"))
+            return
         param = clean
     elif tool == "adsoyad":
         if len(param.split()) < 2:
-            bot_instance.reply_to(msg, s(uid, "invalid_adsoyad")); return
+            bot_instance.reply_to(msg, "❌ Ad ve soyad girin (örn: Ali Yılmaz)")
+            return
     elif tool == "adaparsel":
         if "," not in param:
-            bot_instance.reply_to(msg, s(uid, "invalid_adaparsel")); return
+            bot_instance.reply_to(msg, "❌ Format: İl,İlçe")
+            return
+
+    # Vesika: sadece bakiyeli
+    if tool == "vesika":
+        if not vesika_can_query(uid):
+            bot_instance.reply_to(
+                msg,
+                vesika_no_balance_text(uid),
+                reply_markup=vesika_packages_kb(),
+                parse_mode="HTML",
+            )
+            return
+
     sm = bot_instance.reply_to(msg, s(uid, "processing"))
-    api_cfg = TURKIYE_API[tool]; url = api_cfg["url"]
+    api_cfg = TURKIYE_API.get(tool)
+    if not api_cfg:
+        bot_instance.edit_message_text("❌ Geçersiz araç.", msg.chat.id, sm.message_id)
+        return
+    url = api_cfg["url"]
     if tool == "adsoyad":
-        # Son kelime soyad, onceki kelimeler ad (cift isim destek: Ali Veli Yilmaz)
-        pts = [x for x in param.split() if x]
-        ad = " ".join(pts[:-1])
-        soyad = pts[-1]
+        parts = param.split()
+        if len(parts) >= 3:
+            ad = " ".join(parts[:-1])
+            soyad = parts[-1]
+        else:
+            ad, soyad = parts[0], parts[1]
         url = url.replace("{ad}", requests.utils.quote(ad)).replace("{soyad}", requests.utils.quote(soyad))
-    elif tool == "gsmtc": url = url.replace("{gsm}", param)
     elif tool == "adaparsel":
         pts = param.split(",")
         url = url.replace("{il}", pts[0].strip().upper()).replace("{ilce}", pts[1].strip().upper())
-    else: url = url.replace("{tc}", param)
+    elif tool == "gsmtc":
+        url = url.replace("{gsm}", param)
+    else:
+        url = url.replace("{tc}", param)
+
+    # Vesika: fotoğraf cevabi
+    if tool == "vesika":
+        try:
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=(10, 40), verify=False)
+            ctype = (r.headers.get("Content-Type") or "").lower()
+            photo_bytes = None
+            caption_extra = ""
+            if r.status_code != 200:
+                bot_instance.edit_message_text(f"❌ API HTTP {r.status_code}", msg.chat.id, sm.message_id)
+                return
+            # dogrudan gorsel
+            if "image/" in ctype:
+                photo_bytes = r.content
+            else:
+                try:
+                    data = r.json()
+                except Exception:
+                    data = None
+                if isinstance(data, dict):
+                    # hata
+                    if data.get("durum") in ("basarisiz", "error", "fail") or data.get("status") in ("not_found", "error"):
+                        err = data.get("hata") or data.get("message") or data.get("msg") or "Kayıt bulunamadı."
+                        bot_instance.edit_message_text(f"❌ {err}", msg.chat.id, sm.message_id)
+                        return
+                    # base64 / url alanlari
+                    for key in ("vesika", "foto", "photo", "image", "img", "resim", "data", "base64", "url"):
+                        val = data.get(key)
+                        if not val or not isinstance(val, str):
+                            continue
+                        val = val.strip()
+                        if val.startswith("http://") or val.startswith("https://"):
+                            try:
+                                ir = requests.get(val, timeout=25, verify=False)
+                                if ir.status_code == 200 and len(ir.content) > 100:
+                                    photo_bytes = ir.content
+                                    break
+                            except Exception:
+                                pass
+                        else:
+                            # data:image/...;base64,
+                            if "base64," in val:
+                                val = val.split("base64,", 1)[1]
+                            try:
+                                import base64
+                                photo_bytes = base64.b64decode(val)
+                                if len(photo_bytes) > 100:
+                                    break
+                                photo_bytes = None
+                            except Exception:
+                                photo_bytes = None
+                    # diger metin bilgisi caption
+                    skip = {"vesika", "foto", "photo", "image", "img", "resim", "data", "base64", "url", "auth", "developer"}
+                    bits = []
+                    for k, v in data.items():
+                        if k.lower() in skip or v is None:
+                            continue
+                        if isinstance(v, (str, int, float)) and str(v).strip():
+                            bits.append(f"{k}: {v}")
+                    if bits:
+                        caption_extra = "\n".join(bits[:8])
+                if photo_bytes is None and r.content and len(r.content) > 500 and r.content[:3] == b"\xff\xd8\xff":
+                    photo_bytes = r.content
+            if not photo_bytes:
+                bot_instance.edit_message_text("❌ Vesika bulunamadı veya görsel yok.", msg.chat.id, sm.message_id)
+                return
+            # hak dus (admin haric basarili sonuc)
+            if not vesika_use_query(uid):
+                bot_instance.edit_message_text("❌ Bakiye yetersiz.", msg.chat.id, sm.message_id)
+                return
+            import io
+            buf = io.BytesIO(photo_bytes)
+            buf.name = f"vesika_{param}.jpg"
+            cap = (
+                f"🪪 <b>VESİKA</b>\n"
+                f"🆔 TC: <code>{param}</code>\n"
+                f"💰 Kalan: <b>{vesika_get_balance(uid)}</b>\n"
+                f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            )
+            if caption_extra:
+                cap += "\n" + html.escape(caption_extra[:400])
+            bot_instance.send_photo(msg.chat.id, buf, caption=cap[:1024], parse_mode="HTML")
+            try:
+                bot_instance.delete_message(msg.chat.id, sm.message_id)
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[VESIKA] {e}")
+            try:
+                bot_instance.edit_message_text(f"❌ Hata: {e}", msg.chat.id, sm.message_id)
+            except Exception:
+                pass
+        return
+
     data, err = _api_get(url)
     if err:
-        bot_instance.edit_message_text(err, msg.chat.id, sm.message_id); return
+        bot_instance.edit_message_text(err, msg.chat.id, sm.message_id)
+        return
     result = _fmt_generic(f"{TURKIYE_API[tool]['icon']} {TURKIYE_API[tool][l]}", data, param, "Türkiye Sorgu")
-    _send_txt_result(msg.chat.id, sm.message_id, bot_instance,
-                     f"Turkey_{tool}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt", result,
-                     s(uid, "tr_caption", tool=tool.upper(), param=param,
-                       date=datetime.now().strftime("%d.%m.%Y %H:%M")))
+    _send_txt_result(
+        msg.chat.id, sm.message_id, bot_instance,
+        f"Turkey_{tool}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt", result,
+        s(uid, "tr_caption", tool=tool.upper(), param=param,
+          date=datetime.now().strftime("%d.%m.%Y %H:%M")),
+    )
+
+
 
 def _process_ls(msg, key, bot_instance):
     uid = msg.from_user.id
@@ -10109,6 +11012,42 @@ def _handle_admin_cb(call, action, bot_instance):
             except: pass
             return
         
+        
+        
+        elif action == "mobius_give":
+            try:
+                bot_instance.answer_callback_query(call.id)
+            except Exception:
+                pass
+            USER_STATES[uid] = {"action": "adm_mobius_give"}
+            bot_instance.send_message(cid, "🔍 Mobius Bakiye Ver\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
+            return
+        elif action == "mobius_take":
+            try:
+                bot_instance.answer_callback_query(call.id)
+            except Exception:
+                pass
+            USER_STATES[uid] = {"action": "adm_mobius_take"}
+            bot_instance.send_message(cid, "➖ Mobius Bakiye Al\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
+            return
+
+        elif action == "vesika_give":
+            try:
+                bot_instance.answer_callback_query(call.id)
+            except Exception:
+                pass
+            USER_STATES[uid] = {"action": "adm_vesika_give"}
+            bot_instance.send_message(cid, "🪪 Vesika Bakiye Ver\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
+            return
+        elif action == "vesika_take":
+            try:
+                bot_instance.answer_callback_query(call.id)
+            except Exception:
+                pass
+            USER_STATES[uid] = {"action": "adm_vesika_take"}
+            bot_instance.send_message(cid, "➖ Vesika Bakiye Al\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
+            return
+
         elif action == "combo_give":
             try:
                 bot_instance.answer_callback_query(call.id)
@@ -10355,6 +11294,58 @@ def _admin_announce(msg, bot_instance):
         except: failed += 1
     bot_instance.reply_to(msg, f"✅ Duyuru gönderildi!\n✅ Başarılı: {sent}\n❌ Başarısız: {failed}\n👥 Toplam: {sent + failed}")
 
+
+
+def _admin_vesika_give(msg, bot_instance):
+    if msg.from_user.id != ADMIN_ID:
+        return
+    try:
+        parts = msg.text.strip().split()
+        target = int(parts[0])
+        amount = int(parts[1])
+        if amount <= 0:
+            raise ValueError
+    except Exception:
+        bot_instance.reply_to(msg, "❌ <code>USER_ID MIKTAR</code>", parse_mode="HTML")
+        return
+    add_user(target, "", "")
+    vesika_init_user(target)
+    vesika_add_balance(target, amount)
+    bal = vesika_get_balance(target)
+    bot_instance.reply_to(
+        msg,
+        f"✅ +{amount} Vesika hakkı: <code>{target}</code>\n💰 Bakiye: <b>{bal}</b>",
+        parse_mode="HTML",
+    )
+    try:
+        bot_instance.send_message(
+            target,
+            f"🎁 Admin sana <b>+{amount}</b> Vesika hakkı verdi!\n💰 Bakiye: <b>{bal}</b>",
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+
+def _admin_vesika_take(msg, bot_instance):
+    if msg.from_user.id != ADMIN_ID:
+        return
+    try:
+        parts = msg.text.strip().split()
+        target = int(parts[0])
+        amount = int(parts[1])
+        if amount <= 0:
+            raise ValueError
+    except Exception:
+        bot_instance.reply_to(msg, "❌ <code>USER_ID MIKTAR</code>", parse_mode="HTML")
+        return
+    current = vesika_get_balance(target)
+    new_bal = max(0, current - amount)
+    vesika_set_balance(target, new_bal)
+    bot_instance.reply_to(
+        msg,
+        f"✅ -{amount} Vesika: <code>{target}</code>\n💰 Yeni: <b>{new_bal}</b>",
+        parse_mode="HTML",
+    )
 
 def _admin_combo_give(msg, bot_instance):
     if msg.from_user.id != ADMIN_ID:
