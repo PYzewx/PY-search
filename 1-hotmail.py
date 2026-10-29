@@ -3881,7 +3881,7 @@ def mobius_no_balance_text(user_id):
     free_left = max(0, MOBIUS_FREE_LIMIT - mobius_get_free_used(user_id))
     bal = mobius_get_balance(user_id)
     return (
-        "❌ <b>Mobius sorgu hakkın kalmadı!</b>\n"
+        "❌ <b>Telegram OSINT sorgu hakkın kalmadı!</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"🆓 Free: <b>{free_left}</b>/{MOBIUS_FREE_LIMIT}\n"
         f"💰 Bakiye: <b>{bal}</b>\n\n"
@@ -3938,7 +3938,7 @@ def mobius_format_tr(resp, aranan):
         return f"❌ Geçersiz yanıt:\n<code>{html.escape(str(resp)[:800])}</code>"
     lines = []
     lines.append("╔" + "═" * 28 + "╗")
-    lines.append("║   🔍  MOBIUS SEARCH OSINT   ║")
+    lines.append("║   🔍  TELEGRAM OSINT         ║")
     lines.append("╚" + "═" * 28 + "╝")
     lines.append("")
     lines.append(f"🎯 <b>Aranan</b>: <code>{html.escape(str(aranan))}</code>")
@@ -4128,7 +4128,7 @@ def _process_mobius_search(msg, bot_instance, search_type=None):
             bio.name = f"mobius_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
             bot_instance.send_document(
                 msg.chat.id, bio,
-                caption=f"🔍 Mobius · <code>{html.escape(query)}</code>\n💰 Kalan: <b>{mobius_get_balance(uid)}</b>",
+                caption=f"🔍 Telegram OSINT · <code>{html.escape(query)}</code>\n💰 Kalan: <b>{mobius_get_balance(uid)}</b>",
                 parse_mode="HTML",
             )
         except Exception:
@@ -4157,9 +4157,9 @@ def _admin_mobius_give(msg, bot_instance):
     mobius_init_user(target)
     mobius_add_balance(target, amount)
     bal = mobius_get_balance(target)
-    bot_instance.reply_to(msg, f"✅ +{amount} Mobius: <code>{target}</code>\n💰 Bakiye: <b>{bal}</b>", parse_mode="HTML")
+    bot_instance.reply_to(msg, f"✅ +{amount} TG-OSINT: <code>{target}</code>\n💰 Bakiye: <b>{bal}</b>", parse_mode="HTML")
     try:
-        bot_instance.send_message(target, f"🎁 Admin sana <b>+{amount}</b> Mobius hakkı verdi!\n💰 Bakiye: <b>{bal}</b>", parse_mode="HTML")
+        bot_instance.send_message(target, f"🎁 Admin sana <b>+{amount}</b> Telegram OSINT hakkı verdi!\n💰 Bakiye: <b>{bal}</b>", parse_mode="HTML")
     except Exception:
         pass
 
@@ -4176,7 +4176,7 @@ def _admin_mobius_take(msg, bot_instance):
         return
     new_bal = max(0, mobius_get_balance(target) - amount)
     mobius_set(target, "query_balance", new_bal)
-    bot_instance.reply_to(msg, f"✅ -{amount} Mobius: <code>{target}</code>\n💰 Yeni: <b>{new_bal}</b>", parse_mode="HTML")
+    bot_instance.reply_to(msg, f"✅ -{amount} TG-OSINT: <code>{target}</code>\n💰 Yeni: <b>{new_bal}</b>", parse_mode="HTML")
 
 
 TURKIYE_API = {
@@ -4246,7 +4246,7 @@ def tools_kb(user_id):
         _btn("SearchX 😈", "menu_lmnx", "primary"),
     )
     mk.add(
-        _btn("🔍 Mobius OSINT", "tool_mobius", "primary"),
+        _btn("🔍 Telegram OSINT", "tool_mobius", "primary"),
     )
     mk.add(
         _btn("🌐 IP Bilgi", "tool_ipinfo", "primary"),
@@ -7207,8 +7207,8 @@ def register_handlers(bot_instance):
             _btn("➖ Combo Bakiye Al", "adm_combo_take", "danger"),
             _btn("🪪 Vesika Bakiye Ver", "adm_vesika_give", "success"),
             _btn("➖ Vesika Bakiye Al", "adm_vesika_take", "danger"),
-            _btn("🔍 Mobius Bakiye Ver", "adm_mobius_give", "success"),
-            _btn("➖ Mobius Bakiye Al", "adm_mobius_take", "danger"),
+            _btn("🔍 TG-OSINT Bakiye Ver", "adm_mobius_give", "success"),
+            _btn("➖ TG-OSINT Bakiye Al", "adm_mobius_take", "danger"),
             _btn("📋 TG-ID Logları", "adm_tgid_logs", "primary"),
             _btn("💰 TG-ID Satın Almalar", "adm_tgid_purchases", "primary"),
             _btn("📂 LOG Premium Ver", "adm_log_give", "success"),
@@ -8822,7 +8822,7 @@ def register_handlers(bot_instance):
                 bal = mobius_get_balance(uid)
                 durum = "👑 Admin — Sınırsız" if uid == ADMIN_ID else f"🆓 Free: {free_left}/{MOBIUS_FREE_LIMIT} | 💰 {bal}"
                 txt = (
-                    "🔍 <b>MOBIUS SEARCH OSINT</b>\n"
+                    "🔍 <b>TELEGRAM OSINT</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n"
                     f"📊 {durum}\n\n"
                     "Telefon · Telegram · VK · FIO · E-posta\n"
@@ -8864,7 +8864,7 @@ def register_handlers(bot_instance):
                     pass
                 bal = mobius_get_balance(uid)
                 txt = (
-                    "💎 <b>MOBIUS PAKETLERİ</b>\n"
+                    "💎 <b>TELEGRAM OSINT PAKETLERİ</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n"
                     f"💰 Bakiye: <b>{bal}</b>\n\n"
                     f"• {MOBIUS_PACKAGE_15} sorgu → <b>{MOBIUS_PRICE_15}⭐</b>\n"
@@ -8888,7 +8888,7 @@ def register_handlers(bot_instance):
                 bal = mobius_get_balance(uid)
                 total = mobius_get_total(uid)
                 txt = (
-                    "📊 <b>MOBIUS İSTATİSTİK</b>\n"
+                    "📊 <b>TELEGRAM OSINT İSTATİSTİK</b>\n"
                     f"🔍 Toplam: <b>{total}</b>\n"
                     f"🆓 Free: <b>{free_used}</b>/{MOBIUS_FREE_LIMIT} (kalan {free_left})\n"
                     f"💰 Bakiye: <b>{bal}</b>"
@@ -8901,10 +8901,10 @@ def register_handlers(bot_instance):
             if data.startswith("mobius_buy_"):
                 pkg = data.replace("mobius_buy_", "")
                 pkg_map = {
-                    "15": (MOBIUS_PACKAGE_15, MOBIUS_PRICE_15, "15 Mobius"),
-                    "75": (MOBIUS_PACKAGE_75, MOBIUS_PRICE_75, "75 Mobius"),
-                    "300": (MOBIUS_PACKAGE_300, MOBIUS_PRICE_300, "300 Mobius"),
-                    "1000": (MOBIUS_PACKAGE_1000, MOBIUS_PRICE_1000, "1000 Mobius"),
+                    "15": (MOBIUS_PACKAGE_15, MOBIUS_PRICE_15, "15 Telegram OSINT"),
+                    "75": (MOBIUS_PACKAGE_75, MOBIUS_PRICE_75, "75 Telegram OSINT"),
+                    "300": (MOBIUS_PACKAGE_300, MOBIUS_PRICE_300, "300 Telegram OSINT"),
+                    "1000": (MOBIUS_PACKAGE_1000, MOBIUS_PRICE_1000, "1000 Telegram OSINT"),
                 }
                 if pkg not in pkg_map:
                     try:
@@ -8918,7 +8918,7 @@ def register_handlers(bot_instance):
                     bot_instance.send_invoice(
                         chat_id=call.message.chat.id,
                         title=f"🔍 {label}",
-                        description=f"{qty} Mobius OSINT sorgu hakkı",
+                        description=f"{qty} Telegram OSINT sorgu hakkı",
                         invoice_payload=f"mobius_{pkg}",
                         provider_token="",
                         currency="XTR",
@@ -9070,10 +9070,10 @@ def register_handlers(bot_instance):
         if payload.startswith("mobius_"):
             pkg = payload.replace("mobius_", "")
             pkg_map = {
-                "15": (MOBIUS_PACKAGE_15, MOBIUS_PRICE_15, "15 Mobius"),
-                "75": (MOBIUS_PACKAGE_75, MOBIUS_PRICE_75, "75 Mobius"),
-                "300": (MOBIUS_PACKAGE_300, MOBIUS_PRICE_300, "300 Mobius"),
-                "1000": (MOBIUS_PACKAGE_1000, MOBIUS_PRICE_1000, "1000 Mobius"),
+                "15": (MOBIUS_PACKAGE_15, MOBIUS_PRICE_15, "15 Telegram OSINT"),
+                "75": (MOBIUS_PACKAGE_75, MOBIUS_PRICE_75, "75 Telegram OSINT"),
+                "300": (MOBIUS_PACKAGE_300, MOBIUS_PRICE_300, "300 Telegram OSINT"),
+                "1000": (MOBIUS_PACKAGE_1000, MOBIUS_PRICE_1000, "1000 Telegram OSINT"),
             }
             if pkg in pkg_map:
                 qty, stars, label = pkg_map[pkg]
@@ -9087,7 +9087,7 @@ def register_handlers(bot_instance):
                     parse_mode="HTML",
                 )
                 try:
-                    bot_instance.send_message(ADMIN_ID, f"💰 MOBIUS SATIN ALMA\n👤 @{username}\n📦 {label} — {stars}⭐")
+                    bot_instance.send_message(ADMIN_ID, f"💰 TG-OSINT SATIN ALMA\n👤 @{username}\n📦 {label} — {stars}⭐")
                 except Exception:
                     pass
             return
@@ -11023,7 +11023,7 @@ def _handle_admin_cb(call, action, bot_instance):
             except Exception:
                 pass
             USER_STATES[uid] = {"action": "adm_mobius_give"}
-            bot_instance.send_message(cid, "🔍 Mobius Bakiye Ver\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
+            bot_instance.send_message(cid, "🔍 TG-OSINT Bakiye Ver\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
             return
         elif action == "mobius_take":
             try:
@@ -11031,7 +11031,7 @@ def _handle_admin_cb(call, action, bot_instance):
             except Exception:
                 pass
             USER_STATES[uid] = {"action": "adm_mobius_take"}
-            bot_instance.send_message(cid, "➖ Mobius Bakiye Al\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
+            bot_instance.send_message(cid, "➖ TG-OSINT Bakiye Al\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
             return
 
         elif action == "vesika_give":
