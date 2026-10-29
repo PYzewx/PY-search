@@ -4114,86 +4114,303 @@ def _mobius_section_lines(title, payload):
     return lines
 
 
+
 def mobius_format_tr(resp, aranan, search_type=None):
-    """API'deki TUM veriyi ozenli, emojili, kutu formatinda ver. List[str]."""
+    return mobius_build_html_report(resp, aranan, search_type)
+
+
+def mobius_build_html_report(resp, aranan, search_type=None):
+    """API tum veriyi tek HTML OSINT raporuna cevirir. Profil/sohbet/mesaj/hediye/leak ayri."""
     if not isinstance(resp, dict):
-        return [f"❌ Geçersiz yanıt\n<code>{_mq(resp, 800)}</code>"]
+        resp = {"raw": str(resp)}
 
     tip = _MOBIUS_TYPE_LABEL.get(search_type, search_type or "Auto")
     elapsed = resp.get("elapsed_seconds")
     count = resp.get("results_count")
-    kind = resp.get("kind") or resp.get("type")
+    kind = resp.get("kind") or resp.get("type") or "—"
     services = resp.get("services_used")
+    if isinstance(services, list):
+        services_s = ", ".join(map(str, services))
+    else:
+        services_s = str(services or "—")
 
-    header_lines = [
-        "🔍 <b>TELEGRAM OSINT</b>",
-        "━━━━━━━━━━━━━━━━━━━━",
-        f"🎯 <code>{_mq(aranan, 80)}</code>",
-        f"📂 Tip: <b>{html.escape(str(tip))}</b>",
-    ]
-    if kind:
-        header_lines.append(f"🏷️ API: <b>{html.escape(str(kind))}</b>")
-    if elapsed is not None:
-        header_lines.append(f"⏱ Süre: <b>{elapsed}</b> sn")
-    if count is not None:
-        header_lines.append(f"📊 Kaynak: <b>{count}</b>")
-    if services:
-        if isinstance(services, list):
-            header_lines.append(f"🔌 {_mq(', '.join(map(str, services)), 200)}")
-        else:
-            header_lines.append(f"🔌 {_mq(services, 200)}")
-    header_lines.append("━━━━━━━━━━━━━━━━━━━━")
+    sections_raw = _mobius_extract_all(resp)
 
-    sections = _mobius_extract_all(resp)
-    body_blocks = []
-    for title, payload in sections:
-        sec_lines = _mobius_section_lines(title, payload)
-        body_blocks.append("<blockquote>" + "\n".join(sec_lines) + "</blockquote>")
+    def _walk_dicts(obj, acc=None):
+        if acc is None:
+            acc = []
+        if isinstance(obj, list):
+            for x in obj:
+                _walk_dicts(x, acc)
+        elif isinstance(obj, dict):
+            if "_body" in obj:
+                _walk_dicts(obj.get("_body"), acc)
+            elif any(k in obj for k in (
+                "user_id", "Telegram ID", "tg_id", "username", "Username",
+                "Email", "email", "database", "Название чата", "Чат",
+                "Текст сообщения", "Подарок", "NFT Подарок", "first_name", "Имя",
+                "gift_received", "Password", "password",
+            )):
+                acc.append(obj)
+            else:
+                for v in obj.values():
+                    if isinstance(v, (dict, list)):
+                        _walk_dicts(v, acc)
+        return acc
 
-    if not body_blocks:
-        # fallback: tum resp (hassas olmayan)
-        skip = {"success"}
-        dump = {k: v for k, v in resp.items() if k not in skip}
-        body_blocks.append(
-            "<blockquote>" + "\n".join(
-                ["┌ 📦 <b>Ham sonuç</b>"] + [f"│ {x}" for x in _mobius_fmt_value(dump, 0)] + ["└"]
-            ) + "</blockquote>"
+    def classify_rec(rec):
+        db = str(rec.get("database") or "").lower()
+        if rec.get("Текст сообщения"):
+            return "message"
+        if rec.get("Название чата") and not rec.get("Текст сообщения"):
+            return "chat"
+        if "чат" in db and "групп" in db:
+            return "chat"
+        if "gift" in db or "подар" in db or "nft" in db:
+            return "gift"
+        if rec.get("Подарок") or rec.get("NFT Подарок") or rec.get("gift_received") or rec.get("gift_sent"):
+            return "gift"
+        has_tg = any(k in rec for k in (
+            "user_id", "Telegram ID", "tg_id", "Username", "username",
+            "first_name", "Имя", "bio", "О себе",
+        ))
+        has_leak = any(k in rec for k in ("Email", "email", "Password", "password"))
+        if has_tg:
+            if has_leak and not any(k in rec for k in ("user_id", "Telegram ID", "tg_id", "Username", "username")):
+                return "leak"
+            return "profile"
+        if has_leak:
+            return "leak"
+        return "other"
+
+    profile_cards, chat_cards, message_cards = [], [], []
+    gift_cards, leak_cards, other_cards = [], [], []
+    source_blocks = []
+
+    for title, payload in sections_raw:
+        source_blocks.append((title, payload))
+        for rec in _walk_dicts(payload):
+            if not isinstance(rec, dict):
+                continue
+            k = classify_rec(rec)
+            if k == "profile":
+                profile_cards.append((title, rec))
+            elif k == "chat":
+                chat_cards.append((title, rec))
+            elif k == "message":
+                message_cards.append((title, rec))
+            elif k == "gift":
+                gift_cards.append((title, rec))
+            elif k == "leak":
+                leak_cards.append((title, rec))
+            else:
+                other_cards.append((title, rec))
+
+    def esc(x):
+        return html.escape(str(x) if x is not None else "")
+
+    def kv_table(rec):
+        rows = []
+        for k, v in rec.items():
+            if v is None or v == "" or v == [] or v == {}:
+                continue
+            if isinstance(v, (dict, list)):
+                try:
+                    inner = json.dumps(v, ensure_ascii=False, indent=2, default=str)
+                except Exception:
+                    inner = str(v)
+                rows.append(
+                    '<tr><td class="k">' + esc(k) + '</td><td class="v"><pre>' + esc(inner) + '</pre></td></tr>'
+                )
+            else:
+                rows.append(
+                    '<tr><td class="k">' + esc(k) + '</td><td class="v"><code>' + esc(v) + '</code></td></tr>'
+                )
+        return "\n".join(rows)
+
+    BADGE_CLASS = {
+        "PROFILE": "",
+        "CHAT": " chat",
+        "MSG": " msg",
+        "GIFT": " gift",
+        "LEAK": " leak",
+        "DATA": "",
+    }
+
+    def card_html(title, rec, badge):
+        db = esc(rec.get("database") or title or "")
+        table = kv_table(rec)
+        bc = BADGE_CLASS.get(badge, "")
+        return (
+            '<article class="card">'
+            '<div class="card-head">'
+            '<span class="badge' + bc + '">' + esc(badge) + '</span>'
+            '<span class="src">' + db + '</span>'
+            '</div>'
+            '<table class="kv">' + table + '</table>'
+            '</article>'
         )
 
-    foot = (
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
-        "🤖 Cyber Search · Telegram OSINT | @hackledin"
-    )
+    def section_html(sec_id, icon, title, items, badge):
+        if not items:
+            return (
+                '<section class="sec" id="' + sec_id + '">'
+                '<h2>' + icon + ' ' + title + ' <span class="count">0</span></h2>'
+                '<p class="empty">Bu kategoride kayıt yok.</p>'
+                '</section>'
+            )
+        cards = "\n".join(card_html(src, rec, badge) for src, rec in items)
+        return (
+            '<section class="sec" id="' + sec_id + '">'
+            '<h2>' + icon + ' ' + title + ' <span class="count">' + str(len(items)) + '</span></h2>'
+            '<div class="grid">' + cards + '</div>'
+            '</section>'
+        )
 
-    # Mesajlara bol (Telegram ~4096) — VERI ATILMAZ, sadece parcalanir
-    out = []
-    cur = "\n".join(header_lines)
-    for blk in body_blocks:
-        if len(cur) + len(blk) + 2 <= 3500:
-            cur = cur + "\n\n" + blk
-        else:
-            if cur.strip():
-                out.append(cur)
-            # tek blok cok uzunsa satir satir bol
-            if len(blk) > 3500:
-                raw = blk
-                while raw:
-                    out.append(raw[:3500])
-                    raw = raw[3500:]
-                cur = ""
-            else:
-                cur = blk
-    if cur.strip():
-        if len(cur) + len(foot) + 2 <= 3500:
-            cur = cur + "\n\n" + foot
-            out.append(cur)
-        else:
-            out.append(cur)
-            out.append(foot)
-    elif out:
-        out.append(foot)
-    return out if out else [foot]
+    def payload_to_pre(payload):
+        try:
+            return esc(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+        except Exception:
+            return esc(str(payload))
+
+    raw_sections = []
+    for title, payload in source_blocks:
+        raw_sections.append(
+            '<details class="raw-block">'
+            '<summary>📡 ' + esc(title) + '</summary>'
+            '<pre>' + payload_to_pre(payload) + '</pre>'
+            '</details>'
+        )
+    raw_html = "\n".join(raw_sections)
+
+    now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    q = esc(aranan)
+
+    css = """
+:root {
+  --bg: #070b12; --panel: #0d1520; --card: #121c2b; --line: #1e2d45;
+  --cyan: #00e5ff; --green: #39ff14; --pink: #ff2d95; --orange: #ff9f1c;
+  --text: #e6eef8; --muted: #8b9bb4; --danger: #ff4d6d;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 0;
+  font-family: "JetBrains Mono", "Fira Code", Consolas, ui-monospace, monospace;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #0a3d4d33, transparent),
+    radial-gradient(900px 500px at 100% 0%, #3d0a4d22, transparent),
+    var(--bg);
+  color: var(--text); line-height: 1.45;
+}
+.wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+.hero {
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, #0d1a28 0%, #0a1220 50%, #101828 100%);
+  border-radius: 16px; padding: 22px;
+  box-shadow: 0 0 40px #00e5ff15, inset 0 1px 0 #ffffff10;
+  position: relative; overflow: hidden;
+}
+.hero::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, #00e5ff04 3px);
+}
+.logo { font-size: 12px; letter-spacing: 3px; color: var(--cyan); text-transform: uppercase; margin-bottom: 8px; }
+.hero h1 { margin: 0 0 12px; font-size: 22px; color: #fff; text-shadow: 0 0 18px #00e5ff55; }
+.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 14px; }
+.meta .box { background: #0a121c; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.meta .lbl { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+.meta .val { font-size: 13px; color: var(--cyan); margin-top: 4px; word-break: break-all; }
+.nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 8px; }
+.nav a {
+  text-decoration: none; color: var(--text); font-size: 12px;
+  border: 1px solid var(--line); background: var(--panel);
+  padding: 8px 12px; border-radius: 999px;
+}
+.nav a:hover { border-color: var(--cyan); color: var(--cyan); }
+.sec { margin-top: 28px; }
+.sec h2 {
+  font-size: 16px; margin: 0 0 14px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--line); color: #fff;
+  display: flex; align-items: center; gap: 10px;
+}
+.count { font-size: 11px; color: var(--bg); background: var(--cyan); padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+.grid { display: grid; gap: 12px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+  box-shadow: 0 8px 24px #00000055;
+}
+.card-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 14px; background: #0a1420; border-bottom: 1px solid var(--line);
+}
+.badge { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--bg); background: var(--green); padding: 3px 8px; border-radius: 6px; font-weight: 700; }
+.badge.leak { background: var(--danger); color: #fff; }
+.badge.chat { background: var(--orange); color: #111; }
+.badge.msg { background: #7c5cff; color: #fff; }
+.badge.gift { background: var(--pink); color: #fff; }
+.src { font-size: 11px; color: var(--muted); text-align: right; }
+table.kv { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.kv td { padding: 8px 12px; vertical-align: top; border-bottom: 1px solid #162233; }
+table.kv tr:last-child td { border-bottom: none; }
+td.k { width: 34%; color: var(--muted); }
+td.v { color: var(--text); word-break: break-word; }
+td.v code { color: var(--cyan); font-family: inherit; }
+td.v pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: #b8f0ff; font-size: 11px; }
+.empty { color: var(--muted); font-size: 13px; }
+.raw-block { margin: 10px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
+.raw-block summary { cursor: pointer; padding: 12px 14px; color: var(--cyan); list-style: none; font-size: 13px; }
+.raw-block summary::-webkit-details-marker { display: none; }
+.raw-block pre { margin: 0; padding: 12px 14px 16px; border-top: 1px solid var(--line); max-height: 420px; overflow: auto; font-size: 11px; color: #9fd; background: #060a10; }
+.footer { margin-top: 32px; text-align: center; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 18px; }
+.footer b { color: var(--cyan); }
+"""
+
+    html_doc = (
+        "<!DOCTYPE html>\n<html lang=\"tr\">\n<head>\n"
+        "<meta charset=\"UTF-8\"/>\n"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n"
+        "<title>Telegram OSINT — " + q + "</title>\n"
+        "<style>" + css + "</style>\n</head>\n<body>\n"
+        "<div class=\"wrap\">\n"
+        "  <header class=\"hero\">\n"
+        "    <div class=\"logo\">Cyber Search · OSINT Report</div>\n"
+        "    <h1>Telegram OSINT</h1>\n"
+        "    <div class=\"meta\">\n"
+        "      <div class=\"box\"><div class=\"lbl\">HEDEF</div><div class=\"val\">" + q + "</div></div>\n"
+        "      <div class=\"box\"><div class=\"lbl\">TIP</div><div class=\"val\">" + esc(tip) + "</div></div>\n"
+        "      <div class=\"box\"><div class=\"lbl\">API</div><div class=\"val\">" + esc(kind) + "</div></div>\n"
+        "      <div class=\"box\"><div class=\"lbl\">SURE</div><div class=\"val\">" + esc(elapsed if elapsed is not None else "—") + " sn</div></div>\n"
+        "      <div class=\"box\"><div class=\"lbl\">KAYNAK</div><div class=\"val\">" + esc(count if count is not None else "—") + "</div></div>\n"
+        "      <div class=\"box\"><div class=\"lbl\">SERVISLER</div><div class=\"val\">" + esc(services_s) + "</div></div>\n"
+        "    </div>\n"
+        "  </header>\n"
+        "  <nav class=\"nav\">\n"
+        "    <a href=\"#profil\">Profil (" + str(len(profile_cards)) + ")</a>\n"
+        "    <a href=\"#sohbet\">Sohbet (" + str(len(chat_cards)) + ")</a>\n"
+        "    <a href=\"#mesaj\">Mesaj (" + str(len(message_cards)) + ")</a>\n"
+        "    <a href=\"#hediye\">Hediye (" + str(len(gift_cards)) + ")</a>\n"
+        "    <a href=\"#leak\">Leak (" + str(len(leak_cards)) + ")</a>\n"
+        "    <a href=\"#diger\">Diger (" + str(len(other_cards)) + ")</a>\n"
+        "    <a href=\"#ham\">Ham API</a>\n"
+        "  </nav>\n"
+        + section_html("profil", "👤", "Telegram Profil", profile_cards, "PROFILE")
+        + section_html("sohbet", "💬", "Sohbetler / Gruplar", chat_cards, "CHAT")
+        + section_html("mesaj", "💭", "Mesajlar", message_cards, "MSG")
+        + section_html("hediye", "🎁", "Hediyeler / NFT", gift_cards, "GIFT")
+        + section_html("leak", "🔓", "Leak / Breach Kayitlari", leak_cards, "LEAK")
+        + section_html("diger", "📦", "Diger Kayitlar", other_cards, "DATA")
+        + "  <section class=\"sec\" id=\"ham\">\n"
+        "    <h2>📡 Ham API Kaynaklari <span class=\"count\">" + str(len(source_blocks)) + "</span></h2>\n"
+        "    <p class=\"empty\">API'nin dondurdugu tum ham JSON — hicbir alan atilmaz.</p>\n"
+        + raw_html + "\n"
+        "  </section>\n"
+        "  <footer class=\"footer\">\n"
+        "    <div>" + esc(now) + "</div>\n"
+        "    <div><b>Cyber Search</b> · Telegram OSINT · @hackledin</div>\n"
+        "  </footer>\n"
+        "</div>\n</body>\n</html>"
+    )
+    return html_doc
 
 
 def _process_mobius_search(msg, bot_instance, search_type=None):
@@ -4213,7 +4430,10 @@ def _process_mobius_search(msg, bot_instance, search_type=None):
     tip = _MOBIUS_TYPE_LABEL.get(search_type or "auto", "Auto")
     wait = bot_instance.reply_to(
         msg,
-        f"⏳ <b>Aranıyor...</b>\n🎯 <code>{html.escape(query)}</code>\n📂 Tip: <b>{html.escape(tip)}</b>",
+        "⏳ <b>OSINT taranıyor...</b>\n"
+        "🎯 <code>" + html.escape(query) + "</code>\n"
+        "📂 Tip: <b>" + html.escape(tip) + "</b>\n"
+        "<i>HTML rapor hazırlanacak</i>",
         parse_mode="HTML",
     )
     code, data = mobius_search(query, st)
@@ -4221,36 +4441,65 @@ def _process_mobius_search(msg, bot_instance, search_type=None):
         err = data.get("error") if isinstance(data, dict) else data
         try:
             bot_instance.edit_message_text(
-                f"❌ <b>Sorgu başarısız</b>\nHTTP: <code>{code}</code>\n{html.escape(str(err)[:400])}",
+                "❌ <b>Sorgu başarısız</b>\nHTTP: <code>" + str(code) + "</code>\n" + html.escape(str(err)[:400]),
                 msg.chat.id, wait.message_id, parse_mode="HTML",
             )
         except Exception:
-            bot_instance.send_message(msg.chat.id, f"❌ HTTP {code}: {err}")
+            bot_instance.send_message(msg.chat.id, "❌ HTTP " + str(code) + ": " + str(err))
         return
     mobius_use_query(uid)
-    parts = mobius_format_tr(data, query, search_type=search_type or "auto")
     try:
-        bot_instance.delete_message(msg.chat.id, wait.message_id)
-    except Exception:
-        pass
-    for i, part in enumerate(parts):
+        html_doc = mobius_build_html_report(data, query, search_type=search_type or "auto")
+    except Exception as e:
+        print("[MOBIUS HTML]", e)
+        import traceback
+        traceback.print_exc()
         try:
-            bot_instance.send_message(msg.chat.id, part, parse_mode="HTML", disable_web_page_preview=True)
-        except Exception as e:
-            # HTML fail → plain
-            try:
-                plain = re.sub(r"<[^>]+>", "", part)
-                bot_instance.send_message(msg.chat.id, plain[:4000])
-            except Exception as e2:
-                print(f"[MOBIUS SEND] {e} / {e2}")
-        if i < len(parts) - 1:
-            time.sleep(0.35)
+            bot_instance.edit_message_text(
+                "❌ Rapor hatası:\n<code>" + html.escape(str(e)[:300]) + "</code>",
+                msg.chat.id, wait.message_id, parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        return
+
+    safe_q = re.sub(r"[^\w\-@.]+", "_", str(query))[:40] or "query"
+    fname = "osint_" + safe_q + "_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".html"
+    try:
+        import io
+        bio = io.BytesIO(html_doc.encode("utf-8"))
+        bio.name = fname
+        try:
+            bot_instance.delete_message(msg.chat.id, wait.message_id)
+        except Exception:
+            pass
+        rc = data.get("results_count")
+        tip_s = _MOBIUS_TYPE_LABEL.get(search_type or "auto", "Auto")
+        caption = (
+            "📁 <b>Telegram OSINT Raporu</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🎯 <code>" + html.escape(query) + "</code>\n"
+            "📂 " + html.escape(str(tip_s)) + "\n"
+            "📊 Kaynak: <b>" + str(rc if rc is not None else "—") + "</b>\n"
+            "⏱ " + str(data.get("elapsed_seconds", "—")) + " sn\n\n"
+            "👤 Profil · 💬 Sohbet · 💭 Mesaj\n"
+            "🎁 Hediye · 🔓 Leak · 📡 Ham API\n"
+            "<i>HTML dosyasını indir → tarayıcıda aç</i>"
+        )
+        bot_instance.send_document(msg.chat.id, bio, caption=caption, parse_mode="HTML")
+    except Exception as e:
+        print("[MOBIUS SEND HTML]", e)
+        try:
+            bot_instance.send_message(msg.chat.id, "❌ HTML gönderilemedi: " + str(e))
+        except Exception:
+            pass
     free_left = max(0, MOBIUS_FREE_LIMIT - mobius_get_free_used(uid))
     bot_instance.send_message(
         msg.chat.id,
-        f"✅ Bitti · 🆓 {free_left}/{MOBIUS_FREE_LIMIT} · 💰 {mobius_get_balance(uid)}",
+        "✅ Rapor hazır · 🆓 " + str(free_left) + "/" + str(MOBIUS_FREE_LIMIT) + " · 💰 " + str(mobius_get_balance(uid)),
         reply_markup=mobius_kb(uid),
     )
+
 
 
 def _admin_mobius_give(msg, bot_instance):
