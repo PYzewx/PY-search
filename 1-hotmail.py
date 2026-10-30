@@ -3206,6 +3206,10 @@ _LMNX_REPLACEMENTS = [
     ("LMNx9", "hackledin"),
     ("LMNX9", "hackledin"),
     ("lmnx9", "hackledin"),
+    ("@jessy_php", "@hackledin"),
+    ("jessy_php", "hackledin"),
+    ("@Jessy_php", "@hackledin"),
+    ("Jessy_php", "hackledin"),
 ]
 
 
@@ -3217,10 +3221,13 @@ def _lmnx_sanitize(obj):
             kl = str(k).lower().strip()
             if kl in _LMNX_HIDE_KEYS:
                 continue
-            if kl in ("developer", "author") or "developer" in kl:
-                out[k] = "hackledin"
+            if kl in ("developer", "author", "auth", "by", "credit", "credits") or "developer" in kl:
+                if isinstance(v, str) and str(v).strip().startswith("@"):
+                    out[k] = "@hackledin"
+                else:
+                    out[k] = "hackledin"
                 continue
-            if kl in ("telegram", "tg") and isinstance(v, str) and "lmnx" in v.lower():
+            if kl in ("telegram", "tg") and isinstance(v, str):
                 out[k] = "@hackledin"
                 continue
             if kl in ("website", "site", "url") and isinstance(v, str) and "lmnx" in v.lower():
@@ -10688,6 +10695,8 @@ def _ai_clean_branding(text):
         ("@x_LMNx9", "@hackledin"), ("@x_lmnx9", "@hackledin"),
         ("lmnx9.shop", "hackledin"), ("api.lmnx9.shop", "hackledin"),
         ("LMNx9", "hackledin"), ("LMNX9", "hackledin"),
+        ("@jessy_php", "@hackledin"), ("jessy_php", "hackledin"),
+        ("@Jessy_php", "@hackledin"), ("Jessy_php", "hackledin"),
     ]:
         s = s.replace(a, b)
     return s
@@ -11366,22 +11375,38 @@ def _api_get(url):
 def _fmt_generic(title, data, queried, header_extra=""):
     now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
     lines = ["=" * 60, f" {title}", "=" * 60, f" Aranan  : {queried}", f" Tarih   : {now}", "=" * 60, ""]
+    try:
+        data = _lmnx_sanitize(data)
+    except Exception:
+        pass
     def _dump(obj, indent=0):
         prefix = "  " * indent
         if isinstance(obj, dict):
             for k, v in obj.items():
-                if v is None or str(v).strip() == "": continue
+                if v is None or str(v).strip() == "":
+                    continue
+                kl = str(k).lower().strip()
+                if kl in ("auth", "developer", "author", "by", "credit", "credits", "telegram", "tg"):
+                    v = "@hackledin"
+                elif isinstance(v, str) and "jessy" in v.lower():
+                    v = "@hackledin" if str(v).strip().startswith("@") else "hackledin"
                 if isinstance(v, (dict, list)):
-                    lines.append(f"{prefix}• {k}:"); _dump(v, indent + 1)
-                else: lines.append(f"{prefix}• {k}: {v}")
+                    lines.append(f"{prefix}• {k}:")
+                    _dump(v, indent + 1)
+                else:
+                    lines.append(f"{prefix}• {k}: {v}")
         elif isinstance(obj, list):
             for i, item in enumerate(obj, 1):
-                lines.append(f"{prefix}[{i}]"); _dump(item, indent + 1); lines.append("")
+                lines.append(f"{prefix}[{i}]")
+                _dump(item, indent + 1)
+                lines.append("")
         else:
-            if str(obj).strip(): lines.append(f"{prefix}{obj}")
+            if str(obj).strip():
+                lines.append(f"{prefix}{obj}")
     _dump(data)
     lines += ["", "=" * 60, f" {header_extra} — 🕵🏻 Cyber Search", " Developer: @hackledin", "=" * 60]
-    return "\n".join(lines)
+    return chr(10).join(lines)
+
 
 def _send_txt_result(chat_id, status_mid, bot_instance, fname, content, caption):
     try:
