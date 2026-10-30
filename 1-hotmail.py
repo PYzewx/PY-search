@@ -4116,12 +4116,93 @@ def _mobius_section_lines(title, payload):
 
 
 
+
 def mobius_format_tr(resp, aranan, search_type=None):
     return mobius_build_html_report(resp, aranan, search_type)
 
 
+_MOBIUS_TR = {
+    "user_id": "Kullanıcı ID",
+    "Telegram ID": "Telegram ID",
+    "tg_id": "Telegram ID",
+    "username": "Kullanıcı adı",
+    "Username": "Kullanıcı adı",
+    "Юзернейм": "Kullanıcı adı",
+    "first_name": "Ad",
+    "last_name": "Soyad",
+    "name": "İsim",
+    "Имя": "İsim",
+    "FullName": "Tam ad",
+    "phone": "Telefon",
+    "Phone": "Telefon",
+    "bio": "Biyografi",
+    "О себе": "Biyografi",
+    "email": "E-posta",
+    "Email": "E-posta",
+    "password": "Şifre",
+    "Password": "Şifre",
+    "database": "Veritabanı",
+    "IP": "IP",
+    "Link": "Bağlantı",
+    "Название чата": "Sohbet",
+    "Чат": "Sohbet",
+    "Ссылка / Юзернейм": "Bağlantı",
+    "Сообщений пользователя": "Mesaj sayısı",
+    "Текст сообщения": "Mesaj",
+    "Дата и время": "Tarih",
+    "Первое сообщение": "İlk mesaj",
+    "Последнее сообщение": "Son mesaj",
+    "Первое сообщение в чате": "İlk mesaj",
+    "Последнее сообщение в чате": "Son mesaj",
+    "Найдено чатов": "Sohbet sayısı",
+    "Сообщений в чатах": "Toplam mesaj",
+    "История юзернеймов": "Kullanıcı adı geçmişi",
+    "История имён": "İsim geçmişi",
+    "usernames_history": "Kullanıcı adı geçmişi",
+    "first_names_history": "İsim geçmişi",
+    "Подарок": "Hediye",
+    "NFT Подарок": "NFT Hediye",
+    "Отправитель": "Gönderen",
+    "Модель": "Model",
+    "Оценка": "Değer",
+    "Всего подарков": "Toplam hediye",
+    "gift_received": "Alınan hediye",
+    "gift_sent": "Gönderilen hediye",
+    "messages_count": "Mesaj sayısı",
+    "chats_count": "Sohbet sayısı",
+    "gifts_count": "Hediye sayısı",
+    "NickName": "Takma ad",
+    "RegDate": "Kayıt tarihi",
+    "Country": "Ülke",
+    "Gender": "Cinsiyet",
+    "Lang": "Dil",
+    "BDay": "Doğum günü",
+    "FacebookID": "Facebook ID",
+    "VK ID": "VK ID",
+    "Steam ID": "Steam ID",
+    "title": "Başlık",
+}
+
+
+def _mobius_tr_key(k):
+    if k in _MOBIUS_TR:
+        return _MOBIUS_TR[k]
+    kl = str(k).lower()
+    for rk, rv in _MOBIUS_TR.items():
+        if rk.lower() == kl:
+            return rv
+    return str(k)
+
+
+def _mobius_css_js():
+    import base64 as _b64
+    css = _b64.b64decode("Cjpyb290ewpjb2xvci1zY2hlbWU6bGlnaHQ7Ci0tYmc6I2ZmZmZmZjstLWZnOiMwYTBhMGE7LS1mZy0yOiM2YjZiNmI7LS1mZy0zOiNhM2EzYTM7LS1saW5lOiNlNWU1ZTU7LS11cDojMWE3ZjM3OwotLXplYnJhOiNmNWY1ZjU7LS1ob3ZlcjojZWJlYmViOwoKLS1mb250OiJHb2xvcyBUZXh0IixzeXN0ZW0tdWksLWFwcGxlLXN5c3RlbSwiU2Vnb2UgVUkiLFJvYm90bywiSGVsdmV0aWNhIE5ldWUiLApBcmlhbCxzYW5zLXNlcmlmOwotLW1lYXN1cmU6MTEwMHB4Oy0tZ3V0dGVyOjI0cHg7LS1iYXI6NjBweDstLWluZGV4OjQ0cHg7Cn0KQG1lZGlhIChwcmVmZXJzLWNvbG9yLXNjaGVtZTpkYXJrKXs6cm9vdDpub3QoW2RhdGEtdGhlbWU9ImxpZ2h0Il0pewpjb2xvci1zY2hlbWU6ZGFyazsKLS1iZzojMGEwYTBhOy0tZmc6I2Y1ZjVmNTstLWZnLTI6IzlhOWE5YTstLWZnLTM6IzZiNmI2YjstLWxpbmU6IzJhMmEyYTstLXVwOiMzZmI5NTA7Ci0temVicmE6IzE1MTUxNTstLWhvdmVyOiMxZjFmMWY7Cn19Cjpyb290W2RhdGEtdGhlbWU9ImRhcmsiXXsKY29sb3Itc2NoZW1lOmRhcms7Ci0tYmc6IzBhMGEwYTstLWZnOiNmNWY1ZjU7LS1mZy0yOiM5YTlhOWE7LS1mZy0zOiM2YjZiNmI7LS1saW5lOiMyYTJhMmE7LS11cDojM2ZiOTUwOwotLXplYnJhOiMxNTE1MTU7LS1ob3ZlcjojMWYxZjFmOwp9CgoqLDo6YmVmb3JlLDo6YWZ0ZXJ7Ym94LXNpemluZzpib3JkZXItYm94fQpbaGlkZGVuXXtkaXNwbGF5Om5vbmUgIWltcG9ydGFudH0KaHRtbHstd2Via2l0LXRleHQtc2l6ZS1hZGp1c3Q6MTAwJTt0ZXh0LXNpemUtYWRqdXN0OjEwMCU7c2Nyb2xsLWJlaGF2aW9yOnNtb290aH0KYm9keXttYXJnaW46MDtiYWNrZ3JvdW5kOnZhcigtLWJnKTtjb2xvcjp2YXIoLS1mZyk7Zm9udC1mYW1pbHk6dmFyKC0tZm9udCk7CmZvbnQtc2l6ZToxNnB4O2xpbmUtaGVpZ2h0OjEuNTU7Zm9udC12YXJpYW50LW51bWVyaWM6dGFidWxhci1udW1zOwotd2Via2l0LWZvbnQtc21vb3RoaW5nOmFudGlhbGlhc2VkfQphe2NvbG9yOmluaGVyaXQ7dGV4dC1kZWNvcmF0aW9uOnVuZGVybGluZTt0ZXh0LWRlY29yYXRpb24tdGhpY2tuZXNzOjFweDsKdGV4dC1kZWNvcmF0aW9uLWNvbG9yOnZhcigtLWZnLTMpO3RleHQtdW5kZXJsaW5lLW9mZnNldDozcHh9CmE6aG92ZXJ7dGV4dC1kZWNvcmF0aW9uLWNvbG9yOmN1cnJlbnRDb2xvcn0KOmZvY3VzLXZpc2libGV7b3V0bGluZToycHggc29saWQgdmFyKC0tZmcpO291dGxpbmUtb2Zmc2V0OjJweH0KLndyYXB7bWF4LXdpZHRoOnZhcigtLW1lYXN1cmUpO21hcmdpbjowIGF1dG87cGFkZGluZzowIHZhcigtLWd1dHRlcil9Ci5wYWdle3BhZGRpbmctYm90dG9tOjgwcHh9Ci5jYXBze3RleHQtdHJhbnNmb3JtOnVwcGVyY2FzZTtsZXR0ZXItc3BhY2luZzouMDhlbTtjb2xvcjp2YXIoLS1mZy0yKTtmb250LXNpemU6MTJweDsKZm9udC13ZWlnaHQ6NTAwfQoubXV0ZWR7Y29sb3I6dmFyKC0tZmctMyl9CgovKiBUaGUgYmFyIGNhcnJpZXMgd2hhdCBoYXMgdG8gYmUgaW4gcmVhY2ggb24gZXZlcnkgc2NyZWVuIG9mIHRoZSBmaWxlOiB3aG9zZQogICBicmFuZCBpdCBpcywgdGhlIGZpbHRlciwgYW5kIHRoZSB0aGVtZS4gKi8KLnRvcHtwb3NpdGlvbjpzdGlja3k7dG9wOjA7ei1pbmRleDoyMDtiYWNrZ3JvdW5kOnZhcigtLWJnKTsKYm9yZGVyLWJvdHRvbToxcHggc29saWQgdmFyKC0tbGluZSl9Ci50b3AgLndyYXB7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6MTZweDtoZWlnaHQ6dmFyKC0tYmFyKX0KLmJyYW5ke2ZsZXg6bm9uZTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDoxMHB4O2ZvbnQtc2l6ZToxNnB4Owpmb250LXdlaWdodDo3MDA7bGV0dGVyLXNwYWNpbmc6LjE4ZW07dGV4dC10cmFuc2Zvcm06dXBwZXJjYXNlfQouYnJhbmQgc3Zne2ZsZXg6bm9uZX0KLmZpbmR7ZmxleDoxIDEgYXV0bzttaW4td2lkdGg6MDttYXgtd2lkdGg6MzYwcHg7aGVpZ2h0OjM0cHg7bWFyZ2luLWxlZnQ6YXV0bzsKcGFkZGluZzowIDEycHg7Y29sb3I6dmFyKC0tZmcpO2JhY2tncm91bmQ6dHJhbnNwYXJlbnQ7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1saW5lKTsKYm9yZGVyLXJhZGl1czowO2ZvbnQ6aW5oZXJpdDtmb250LXNpemU6MTRweDstd2Via2l0LWFwcGVhcmFuY2U6bm9uZTthcHBlYXJhbmNlOm5vbmV9Ci5maW5kOjpwbGFjZWhvbGRlcntjb2xvcjp2YXIoLS1mZy0zKX0KLmZpbmQ6Zm9jdXN7b3V0bGluZTpub25lO2JvcmRlci1jb2xvcjp2YXIoLS1mZyl9Ci50aGVtZXtmbGV4Om5vbmU7aGVpZ2h0OjM0cHg7cGFkZGluZzowIDE0cHg7Y29sb3I6dmFyKC0tZmctMik7YmFja2dyb3VuZDp0cmFuc3BhcmVudDsKYm9yZGVyOjFweCBzb2xpZCB2YXIoLS1saW5lKTtib3JkZXItcmFkaXVzOjA7Y3Vyc29yOnBvaW50ZXI7Zm9udDppbmhlcml0O2ZvbnQtc2l6ZToxMnB4Owpmb250LXdlaWdodDo1MDA7bGV0dGVyLXNwYWNpbmc6LjA4ZW07dGV4dC10cmFuc2Zvcm06dXBwZXJjYXNlfQoudGhlbWU6aG92ZXJ7Y29sb3I6dmFyKC0tZmcpO2JvcmRlci1jb2xvcjp2YXIoLS1mZyl9CgovKiBJZGVudGl0eSAqLwoua2lja2Vye21hcmdpbjozNnB4IDAgMjhweH0KLndob3tkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDoyMHB4O2ZsZXgtd3JhcDp3cmFwfQovKiBGYWNlcyBhcmUgdGhlIG9uZSB0aGluZyB3aXRoIHJvdW5kZWQgY29ybmVycy4gIFRoZSBzaXRlJ3Mgc3F1YXJlIGVkZ2VzIHN1aXQKICAgYSBjb250cm9sOyBvbiBhIHBvcnRyYWl0IHRoZXkgcmVhZCBhcyBhIGNyb3AsIGFuZCBldmVyeSBjbGllbnQgdGhlIHJlYWRlcgogICBrbm93cyBhIGZhY2UgZnJvbSByb3VuZHMgaXQuICBBIHNoYXJlIG9mIHRoZSBzaWRlIHJhdGhlciB0aGFuIHBpeGVscywgc28gdGhlCiAgIHBob25lJ3Mgc21hbGxlciB0aWxlIGtlZXBzIHRoZSBzYW1lIHNoYXBlLiAqLwouc2lnaWx7ZmxleDpub25lO3dpZHRoOjcycHg7aGVpZ2h0OjcycHg7ZGlzcGxheTpncmlkO3BsYWNlLWl0ZW1zOmNlbnRlcjsKYmFja2dyb3VuZDp2YXIoLS1mZyk7Y29sb3I6dmFyKC0tYmcpO2ZvbnQtc2l6ZToyNnB4O2ZvbnQtd2VpZ2h0OjcwMDsKbGV0dGVyLXNwYWNpbmc6LS4wMmVtO2JvcmRlci1yYWRpdXM6MjUlO292ZXJmbG93OmhpZGRlbn0KLnNpZ2lsLnBoe29iamVjdC1maXQ6Y292ZXI7YmFja2dyb3VuZDp2YXIoLS1saW5lKX0KLyogVGhlIHNhbWUgaWRlYSBvbmUgc2l6ZSBkb3duLCBpbiBmcm9udCBvZiBldmVyeSBjaGF0IGluIGEgbGlzdDogYSBuYW1lIGlzIGEKICAgc3RyaW5nIHRvIHJlYWQsIGEgZmFjZSBpcyB0aGUgdGhpbmcgdGhlIHJlYWRlciBhbHJlYWR5IGtub3dzIGZyb20gdGhlaXIgb3duCiAgIGNsaWVudC4gIEVtcHR5IGJ5IGRlc2lnbiDigJQgdGhlIGZpbHRlciBtYXRjaGVzIGEgcm93IG9uIGl0cyB0ZXh0LCBhbmQgdGhpcwogICBtdXN0IG5vdCBwdXQgYW55IHRoZXJlLiAgRWFjaCBwaWN0dXJlIGxhbmRzIGluIGEgY2xhc3Mgb2YgaXRzIG93biBzbyBhIGNoYXQKICAgaW4gdGhyZWUgdGFibGVzIGNvc3RzIG9uZSBjb3B5IG9mIGl0LiAgQSB0aWxlIHdpdGhvdXQgYSBwaWN0dXJlIGRyYXdzIGEKICAgc2lsaG91ZXR0ZSDigJQgb25lIHBlcnNvbiwgb3IgdHdvIGZvciBhIGNoYXQg4oCUIG92ZXIgYSBjb2xvdXIgZml4ZWQgYnkgaXRzCiAgIGh1ZSwgc28gdGhlIHNhbWUgc3ViamVjdCBpcyB0aGUgc2FtZSBjb2xvdXIgaW4gZXZlcnkgdGFibGUuICBUaGUgaWNvbnMgbGl2ZQogICBoZXJlIG9uY2UsIGFzIGJhY2tncm91bmRzOiBhIHJvc3RlciBydW5zIHRvIHRlbnMgb2YgdGhvdXNhbmRzIG9mIHJvd3MuICovCi5hdntmbGV4Om5vbmU7ZGlzcGxheTppbmxpbmUtYmxvY2s7d2lkdGg6MjBweDtoZWlnaHQ6MjBweDttYXJnaW4tcmlnaHQ6OHB4Owp2ZXJ0aWNhbC1hbGlnbjotNXB4O2JvcmRlci1yYWRpdXM6MzAlO2JhY2tncm91bmQ6dmFyKC0tbGluZSkgY2VudGVyL2NvdmVyIG5vLXJlcGVhdH0KLmF2LmdlbntiYWNrZ3JvdW5kOmhzbCh2YXIoLS1oKSAzOCUgNDYlKSB1cmwoImRhdGE6aW1hZ2Uvc3ZnK3htbCwlM0NzdmcgeG1sbnM9J2h0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnJyB2aWV3Qm94PScwIDAgMjQgMjQnIGZpbGw9JyUyM2ZmZiclM0UlM0NjaXJjbGUgY3g9JzEyJyBjeT0nOS41JyByPSc0LjMnLyUzRSUzQ3BhdGggZD0nTTMuNiAyNGMwLTQuOSAzLjgtOC40IDguNC04LjRzOC40IDMuNSA4LjQgOC40eicvJTNFJTNDL3N2ZyUzRSIpIGNlbnRlci8xMDAlIG5vLXJlcGVhdH0KLmF2Lmdlbi5ncnB7YmFja2dyb3VuZDpoc2wodmFyKC0taCkgMzglIDQ2JSkgdXJsKCJkYXRhOmltYWdlL3N2Zyt4bWwsJTNDc3ZnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zycgdmlld0JveD0nMCAwIDI0IDI0JyBmaWxsPSclMjNmZmYnJTNFJTNDZyBvcGFjaXR5PScuNiclM0UlM0NjaXJjbGUgY3g9JzE1LjgnIGN5PSc4LjYnIHI9JzMuMycvJTNFJTNDcGF0aCBkPSdNMTAgMjRjLjQtNC4zIDIuOC03LjQgNS44LTcuNCAzLjMgMCA1LjkgMy4xIDUuOSA3LjR6Jy8lM0UlM0MvZyUzRSUzQ2NpcmNsZSBjeD0nOC44JyBjeT0nMTAuNCcgcj0nMy44Jy8lM0UlM0NwYXRoIGQ9J00xLjggMjRjMC00LjUgMy4xLTcuNyA3LTcuN3M3IDMuMiA3IDcuN3onLyUzRSUzQy9zdmclM0UiKSBjZW50ZXIvMTAwJSBuby1yZXBlYXR9Ci5uYW1lc3tmbGV4OjEgMSAyODBweDttaW4td2lkdGg6MH0KaDF7bWFyZ2luOjA7Zm9udC1zaXplOmNsYW1wKDMwcHgsNC42dncsNTJweCk7bGluZS1oZWlnaHQ6MS4wNTtmb250LXdlaWdodDo3MDA7CmxldHRlci1zcGFjaW5nOi0uMDJlbTtvdmVyZmxvdy13cmFwOmFueXdoZXJlfQpoMS51bmtub3due2NvbG9yOnZhcigtLWZnLTIpfQouY2hpcHN7ZGlzcGxheTpmbGV4O2ZsZXgtd3JhcDp3cmFwO2dhcDo0cHggMThweDttYXJnaW4tdG9wOjEycHg7Zm9udC1zaXplOjE1cHg7CmNvbG9yOnZhcigtLWZnLTIpfQouY2hpcCBie2ZvbnQtd2VpZ2h0OjUwMDtjb2xvcjp2YXIoLS1mZyl9Ci5jaGlwLmhhbmRsZXtjb2xvcjp2YXIoLS1mZyl9Ci5jdGF7ZmxleDpub25lO2Rpc3BsYXk6aW5saW5lLWJsb2NrO3BhZGRpbmc6MTBweCAxNnB4O2JhY2tncm91bmQ6dmFyKC0tZmcpOwpjb2xvcjp2YXIoLS1iZyk7dGV4dC1kZWNvcmF0aW9uOm5vbmU7Zm9udC1zaXplOjEycHg7Zm9udC13ZWlnaHQ6NTAwOwpsZXR0ZXItc3BhY2luZzouMDhlbTt0ZXh0LXRyYW5zZm9ybTp1cHBlcmNhc2V9Ci5jdGE6aG92ZXJ7b3BhY2l0eTouODV9CgovKiBTaXplIGZpcnN0LCBzZXQgdGhlIHdheSB0aGUgc2l0ZSBzZXRzIGl0cyB0b3RhbHM6IHRoZSBmaWd1cmUgaXMgdGhlIHRoaW5nLAogICB0aGUgbGFiZWwgaXMgYSBjYXB0aW9uIHVuZGVyIGl0LiAqLwoudGlsZXN7ZGlzcGxheTpncmlkO2dyaWQtdGVtcGxhdGUtY29sdW1uczpyZXBlYXQoYXV0by1maXQsbWlubWF4KDIwMHB4LDFmcikpOwpnYXA6MzZweCAzMnB4O21hcmdpbi10b3A6NDRweH0KLnRpbGUgLm57ZGlzcGxheTpibG9jaztmb250LXNpemU6Y2xhbXAoMzZweCw1LjR2dyw2NHB4KTtmb250LXdlaWdodDo3MDA7CmxpbmUtaGVpZ2h0Oi45NTtsZXR0ZXItc3BhY2luZzotLjAyZW19Ci50aWxlIC5se2Rpc3BsYXk6YmxvY2s7bWFyZ2luLXRvcDoxMHB4fQovKiBXaWRlciBjb2x1bW5zIHRoYW4gdGhlIGZpZ3VyZXMgYWJvdmU6IHRoZSBsb25nZXN0IGxhYmVscyB3cmFwcGVkIGF0IGZvdXIKICAgYWNyb3NzIGFuZCBzZXQgdGhlaXIgdmFsdWVzIGxvd2VyIHRoYW4gdGhlIHJlc3Qgb2YgdGhlIHJvdy4gKi8KLmZhY3Rze2Rpc3BsYXk6Z3JpZDtncmlkLXRlbXBsYXRlLWNvbHVtbnM6cmVwZWF0KGF1dG8tZml0LG1pbm1heCgyNjBweCwxZnIpKTsKZ2FwOjI0cHggMzJweDttYXJnaW4tdG9wOjQwcHh9Ci5mYWN0e21pbi13aWR0aDowfQouZmFjdCAubHtkaXNwbGF5OmJsb2NrfQouZmFjdCAudntkaXNwbGF5OmJsb2NrO21hcmdpbi10b3A6NnB4O2ZvbnQtc2l6ZToxOHB4O2ZvbnQtd2VpZ2h0OjUwMDsKb3ZlcmZsb3ctd3JhcDphbnl3aGVyZX0KCi8qIFdoZW4gdGhlIGFjY291bnQgd2FzIHNlZW4g4oCUIHRoZSBvbmUgdGhpbmcgbm8gdGFibGUgc2F5cy4gIEV2ZXJ5IGRhdGVkCiAgIHJlY29yZCBwbGFudHMgYSBiYXIgb24gYSB0aW1lbGluZSBkcmF3biB0byBzY2FsZSwgc28gYSBkZWNhZGUgb2Ygc3RlYWR5CiAgIHRyYWZmaWMgYW5kIGEgZm9ydG5pZ2h0IG9mIGl0IGFyZSBkaWZmZXJlbnQgc2hhcGVzIHJhdGhlciB0aGFuIHR3byBkYXRlcy4KICAgVW5rbm93biBkYXRlcyBhcmUgaGF0Y2hlZCwgdGhlIHdheSB0aGUgc2l0ZSBtYXJrcyB3aGF0IGl0IGNhbm5vdCBjb3VudC4gKi8KLnRhcGV7bWFyZ2luOjQ0cHggMCAwfQoudGFwZSAuY2Fwe2Rpc3BsYXk6ZmxleDtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2VlbjtnYXA6MTJweDttYXJnaW4tYm90dG9tOjE0cHh9Ci5wbG90e2Rpc3BsYXk6ZmxleDthbGlnbi1pdGVtczpmbGV4LWVuZDtnYXA6MnB4O2hlaWdodDo3MnB4Owpib3JkZXItYm90dG9tOjFweCBzb2xpZCB2YXIoLS1mZy0zKX0KLnBsb3QgaXtmbGV4OjEgMSAwO21pbi13aWR0aDowO2JhY2tncm91bmQ6dmFyKC0tZmcpO2hlaWdodDpjYWxjKDQlICsgdmFyKC0tdiwwKSo5NiUpfQoucGxvdCBpLnp7aGVpZ2h0OjB9Ci5wbG90LmZsYXR7ZGlzcGxheTpibG9jaztoZWlnaHQ6MTRweDtib3JkZXI6MDsKYmFja2dyb3VuZDpyZXBlYXRpbmctbGluZWFyLWdyYWRpZW50KDQ1ZGVnLHZhcigtLWZnKSAwIDJweCx0cmFuc3BhcmVudCAycHggNXB4KX0KLmF4aXN7cG9zaXRpb246cmVsYXRpdmU7aGVpZ2h0OjE2cHg7bWFyZ2luLXRvcDo4cHg7Y29sb3I6dmFyKC0tZmctMyl9Ci5heGlzIHNwYW57cG9zaXRpb246YWJzb2x1dGU7dHJhbnNmb3JtOnRyYW5zbGF0ZVgoLTUwJSl9Ci5lbmRze2Rpc3BsYXk6ZmxleDtqdXN0aWZ5LWNvbnRlbnQ6c3BhY2UtYmV0d2VlbjttYXJnaW4tdG9wOjRweH0KCi5ub3Rle21hcmdpbjoxNnB4IDAgMDttYXgtd2lkdGg6NzJjaDtmb250LXNpemU6MTRweDtjb2xvcjp2YXIoLS1mZy0yKX0KLm5vdGUuYWxlcnR7Y29sb3I6dmFyKC0tZmcpO2ZvbnQtd2VpZ2h0OjUwMH0KLyogVGhlIGJhciBvdmVyIGEgbWVzc2FnZSBsaXN0IG5hcnJvd2VkIHRvIG9uZSBjaGF0LCBhbmQgdGhlIHdheSBiYWNrLiAqLwouc2NvcGV7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtmbGV4LXdyYXA6d3JhcDtnYXA6OHB4IDE0cHg7bWFyZ2luOjAgMCAxNHB4Owpmb250LXNpemU6MTRweDtmb250LXdlaWdodDo1MDB9Ci5zY29wZSBidXR0b257aGVpZ2h0OjMwcHg7cGFkZGluZzowIDEycHg7Y29sb3I6dmFyKC0tZmctMik7YmFja2dyb3VuZDp0cmFuc3BhcmVudDsKYm9yZGVyOjFweCBzb2xpZCB2YXIoLS1saW5lKTtib3JkZXItcmFkaXVzOjA7Y3Vyc29yOnBvaW50ZXI7Zm9udDppbmhlcml0O2ZvbnQtc2l6ZToxMnB4Owpmb250LXdlaWdodDo1MDA7bGV0dGVyLXNwYWNpbmc6LjA4ZW07dGV4dC10cmFuc2Zvcm06dXBwZXJjYXNlfQouc2NvcGUgYnV0dG9uOmhvdmVye2NvbG9yOnZhcigtLWZnKTtib3JkZXItY29sb3I6dmFyKC0tZmcpfQovKiBXaGF0IHRoZSBmaWx0ZXIgZm91bmQsIGluIHRoZSBvbmUgY29sb3VyIHRoZSBmaWxlIHVzZXMgZm9yICJsaXZlIi4gIFdyaXR0ZW4KICAgaW4gY29sb3Vycywgbm90IHZhcigpOiBDaHJvbWUgdmVyc2lvbnMgc3RpbGwgb24gcGhvbmVzIHJlc29sdmUgYSBoaWdobGlnaHQncwogICB2YXIoKSBhZ2FpbnN0IHRoZSBoaWdobGlnaHQncyBvd24gY2FzY2FkZSwgd2hlcmUgbm8gdG9rZW4gaXMgc2V0LCBhbmQgdGhlCiAgIHF1ZXJ5IG5hcnJvd2VkIHRoZSB0YWJsZXMgYW5kIHBhaW50ZWQgbm90aGluZy4gKi8KOjpoaWdobGlnaHQocSl7YmFja2dyb3VuZC1jb2xvcjojMWE3ZjM3O2NvbG9yOiNmZmZmZmZ9CkBtZWRpYSAocHJlZmVycy1jb2xvci1zY2hlbWU6ZGFyayl7OnJvb3Q6bm90KFtkYXRhLXRoZW1lPSJsaWdodCJdKSA6OmhpZ2hsaWdodChxKXtiYWNrZ3JvdW5kLWNvbG9yOiMzZmI5NTA7Y29sb3I6IzBhMGEwYX19Cjpyb290W2RhdGEtdGhlbWU9ImRhcmsiXSA6OmhpZ2hsaWdodChxKXtiYWNrZ3JvdW5kLWNvbG9yOiMzZmI5NTA7Y29sb3I6IzBhMGEwYX0KLmZvbGQ+Lm5vdGU6Zmlyc3QtY2hpbGR7bWFyZ2luLXRvcDowfQoubm9yZXN7ZGlzcGxheTpub25lO3BhZGRpbmc6NDhweCAwO3RleHQtYWxpZ246Y2VudGVyfQoKLyogVGhlIGluZGV4IHN0YXlzIHVuZGVyIHRoZSBiYXIgYW5kIHNheXMgd2hlcmUgdGhlIHJlYWRlciBpczogdGhlIHNlY3Rpb24gb24KICAgc2NyZWVuIGlzIHVuZGVybGluZWQuICBBbHdheXMgb25lIHJvdyDigJQgc2hvcnQgbGFiZWxzIG1ha2UgaXQgZml0IGEgZGVza3RvcCwKICAgYW5kIHdoZXJlIGl0IHN0aWxsIGRvZXMgbm90IChhIHBob25lKSBpdCBzY3JvbGxzIHNpZGV3YXlzIHVuZGVyIGEgZmFkZQogICByYXRoZXIgdGhhbiB3cmFwcGluZyBpbnRvIGEgcmFnZ2VkIHNlY29uZCBsaW5lLiAqLwouaW5kZXh7cG9zaXRpb246c3RpY2t5O3RvcDp2YXIoLS1iYXIpO3otaW5kZXg6MTA7bWFyZ2luLXRvcDo1NnB4OwpiYWNrZ3JvdW5kOnZhcigtLWJnKTtib3JkZXItYm90dG9tOjFweCBzb2xpZCB2YXIoLS1saW5lKX0KLmluZGV4IC5zdHJpcHtwb3NpdGlvbjpyZWxhdGl2ZTtkaXNwbGF5OmZsZXg7Z2FwOjIwcHg7aGVpZ2h0OnZhcigtLWluZGV4KTsKb3ZlcmZsb3cteDphdXRvO3Njcm9sbGJhci13aWR0aDpub25lfQouaW5kZXggLnN0cmlwLm1vcmV7Ci13ZWJraXQtbWFzay1pbWFnZTpsaW5lYXItZ3JhZGllbnQoOTBkZWcsIzAwMCBjYWxjKDEwMCUgLSAyOHB4KSx0cmFuc3BhcmVudCk7Cm1hc2staW1hZ2U6bGluZWFyLWdyYWRpZW50KDkwZGVnLCMwMDAgY2FsYygxMDAlIC0gMjhweCksdHJhbnNwYXJlbnQpfQouaW5kZXggLnN0cmlwOjotd2Via2l0LXNjcm9sbGJhcntkaXNwbGF5Om5vbmV9Ci5pbmRleCBhe2ZsZXg6bm9uZTtkaXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2dhcDo3cHg7Y29sb3I6dmFyKC0tZmctMik7CnRleHQtZGVjb3JhdGlvbjpub25lO3doaXRlLXNwYWNlOm5vd3JhcDtmb250LXNpemU6MTJweDtmb250LXdlaWdodDo1MDA7CmxldHRlci1zcGFjaW5nOi4wOGVtO3RleHQtdHJhbnNmb3JtOnVwcGVyY2FzZTtib3gtc2hhZG93Omluc2V0IDAgLTJweCAwIHRyYW5zcGFyZW50fQouaW5kZXggYSBie2ZvbnQtd2VpZ2h0OjUwMDtjb2xvcjp2YXIoLS1mZy0zKX0KLmluZGV4IGE6aG92ZXJ7Y29sb3I6dmFyKC0tZmcpfQouaW5kZXggYS5vbntjb2xvcjp2YXIoLS1mZyk7Ym94LXNoYWRvdzppbnNldCAwIC0ycHggMCB2YXIoLS1mZyl9Ci5pbmRleCBhLm9uIGJ7Y29sb3I6dmFyKC0tZmcpfQoKLnNlY3R7cGFkZGluZzoyOHB4IDAgMzZweDtzY3JvbGwtbWFyZ2luLXRvcDpjYWxjKHZhcigtLWJhcikgKyB2YXIoLS1pbmRleCkpfQouc2VjdCsuc2VjdHtib3JkZXItdG9wOjFweCBzb2xpZCB2YXIoLS1saW5lKX0KLnNlY3Q6bm90KFtvcGVuXSl7cGFkZGluZy1ib3R0b206MjhweH0KLmhlYWR7ZGlzcGxheTpmbGV4O2FsaWduLWl0ZW1zOmNlbnRlcjtnYXA6MTBweDttYXJnaW46MCAwIDE4cHg7Y3Vyc29yOnBvaW50ZXI7Cmxpc3Qtc3R5bGU6bm9uZTtmb250LXNpemU6MTJweDtmb250LXdlaWdodDo1MDA7bGV0dGVyLXNwYWNpbmc6LjA4ZW07CnRleHQtdHJhbnNmb3JtOnVwcGVyY2FzZX0KLmhlYWQ6Oi13ZWJraXQtZGV0YWlscy1tYXJrZXJ7ZGlzcGxheTpub25lfQouc2VjdDpub3QoW29wZW5dKSAuaGVhZHttYXJnaW4tYm90dG9tOjB9Ci5oZWFkIC5jaGV2e3dpZHRoOjEwcHg7Zm9udC1zdHlsZTpub3JtYWw7Zm9udC1zaXplOjEwcHg7Y29sb3I6dmFyKC0tZmctMyl9Ci5oZWFkIC5jaGV2OjpiZWZvcmV7Y29udGVudDoiXDI1QjgifQouc2VjdFtvcGVuXSAuaGVhZCAuY2hldjo6YmVmb3Jle2NvbnRlbnQ6IlwyNUJFIn0KLmhlYWQgLm57Zm9udC13ZWlnaHQ6NTAwO2NvbG9yOnZhcigtLWZnLTMpfQouaGVhZCAubi5oaXR7Y29sb3I6dmFyKC0tdXApfQouY29weXttYXJnaW4tbGVmdDphdXRvO2NvbG9yOnZhcigtLWZnLTMpO2N1cnNvcjpwb2ludGVyfQouY29weTpob3Zlcntjb2xvcjp2YXIoLS1mZyl9Ci5jb3B5LmRvbmV7Y29sb3I6dmFyKC0tdXApfQouZm9sZHtvdmVyZmxvdy14OmF1dG99CgovKiBDYXBzIGhlYWRpbmdzIG92ZXIgb25lIGhhaXJsaW5lLCBhbmQgcm93cyB0b2xkIGFwYXJ0IGJ5IGEgYmFuZCBldmVyeSBvdGhlcgogICByb3cgcmF0aGVyIHRoYW4gYSBydWxlIHVuZGVyIGVhY2g6IGEgaHVuZHJlZCBydWxlcyByZWFkIGFzIGxpbmVkIHBhcGVyLgogICBUaGUgYmFuZCBpcyBvbmUgc3RlcCBvZmYgdGhlIHBhZ2UgaW4gZWl0aGVyIHRoZW1lLiAgQSBmaWx0ZXIgaGlkZXMgcm93cywKICAgd2hpY2ggd291bGQgcHV0IHR3byBiYW5kcyB0b2dldGhlciwgc28gd2hpbGUgaXQgaXMgb24gdGhlIHNjcmlwdCBtYXJrcwogICBldmVyeSBvdGhlciAqdmlzaWJsZSogcm93IGluc3RlYWQgKGAucWAgLyBgLmFsdGApLiAgVGhlIHJvdyB1bmRlciB0aGUKICAgcG9pbnRlciBsaWZ0cyBvbmUgc3RlcCBtb3JlLCBzbyBhIHdpZGUgcm93IGlzIGVhc3kgdG8gZm9sbG93IGFjcm9zcy4gIFRoZQogICBoZWFkbGluZSBjZWxsIGlzIHRoZSBvbmUgaW4gZnVsbCBpbms7IGlkcywgaGFuZGxlcywgZGF0ZXMgYW5kIGNvdW50cyBhcmUKICAgdGhlIGV2aWRlbmNlIGJlc2lkZSBpdCwgb25lIHN0ZXAgZ3JleWVyLiAqLwp0YWJsZXt3aWR0aDoxMDAlO2JvcmRlci1jb2xsYXBzZTpjb2xsYXBzZTtmb250LXNpemU6MTRweH0KdGh7cGFkZGluZzo2cHggOHB4O3RleHQtYWxpZ246bGVmdDt3aGl0ZS1zcGFjZTpub3dyYXA7Y29sb3I6dmFyKC0tZmctMik7CmZvbnQtc2l6ZToxMnB4O2ZvbnQtd2VpZ2h0OjUwMDtsZXR0ZXItc3BhY2luZzouMDhlbTt0ZXh0LXRyYW5zZm9ybTp1cHBlcmNhc2U7CmJvcmRlci1ib3R0b206MXB4IHNvbGlkIHZhcigtLWxpbmUpfQovKiBTY3JhcGVkIHRpdGxlcyBhcmUgc3Ryb25nIFJUTDsgd2l0aG91dCBhbiBpc29sYXRlIG9uZSBBcmFiaWMgY2hhdCBuYW1lCiAgIGZsaXBzIHRoZSB3aG9sZSBjZWxsIGFuZCBkcmFncyB0aGUgY29sdW1ucycgcHVuY3R1YXRpb24gd2l0aCBpdC4gKi8KdGR7cGFkZGluZzoxMHB4IDhweDt2ZXJ0aWNhbC1hbGlnbjp0b3A7Y29sb3I6dmFyKC0tZmctMik7b3ZlcmZsb3ctd3JhcDpicmVhay13b3JkOwp1bmljb2RlLWJpZGk6aXNvbGF0ZX0KdGg6Zmlyc3QtY2hpbGQsdGQ6Zmlyc3QtY2hpbGR7cGFkZGluZy1sZWZ0OjEycHh9CnRoOmxhc3QtY2hpbGQsdGQ6bGFzdC1jaGlsZHtwYWRkaW5nLXJpZ2h0OjEycHh9CnRyOm50aC1jaGlsZChvZGQpOm5vdCg6Zmlyc3QtY2hpbGQpe2JhY2tncm91bmQ6dmFyKC0temVicmEpfQoucSB0cjpub3QoLmFsdCl7YmFja2dyb3VuZDpub25lfQoucSB0ci5hbHR7YmFja2dyb3VuZDp2YXIoLS16ZWJyYSl9CnRyOm5vdCg6Zmlyc3QtY2hpbGQpOmhvdmVye2JhY2tncm91bmQ6dmFyKC0taG92ZXIpfQp0ZFtkYXRhLW1haW5de2NvbG9yOnZhcigtLWZnKTtmb250LXdlaWdodDo1MDA7bWF4LXdpZHRoOjUyMHB4fQp0ZDpub3QoW2RhdGEtbGFiZWxdKXt3aWR0aDoxJTt3aGl0ZS1zcGFjZTpub3dyYXA7dGV4dC1hbGlnbjpyaWdodDtmb250LXNpemU6MTJweDsKY29sb3I6dmFyKC0tZmctMyk7cGFkZGluZy10b3A6MTJweH0KdGQgYntjb2xvcjp2YXIoLS11cCk7Zm9udC13ZWlnaHQ6NjAwfQoua3tkaXNwbGF5Om5vbmV9CgovKiBQcm92ZW5hbmNlLiAgRXZlcnkgcm93IGluIHRoaXMgcmVwb3J0IGlzIHNvbWVib2R5J3Mgb2JzZXJ2YXRpb24sIGFuZCB0aGUKICAgdGhyZWUgd2F5cyB3ZSBjYW4ga25vdyBhIHBlcnNvbiB3YXMgaW4gYSBjaGF0IGFyZSBub3QgaW50ZXJjaGFuZ2VhYmxlOiB0aGUKICAgcm9zdGVyIHByb3ZlcyBtZW1iZXJzaGlwLCBhIG1lc3NhZ2Ugc3Vydml2ZXMgdGhlbSBsZWF2aW5nLCBhIHJlYWN0aW9uIGlzIHRoZQogICBvbmx5IHRyYWNlIGEgcmVhZGVyIGV2ZXIgbGVhdmVzLiAgSW4gYSBwYWxldHRlIG9mIGdyZXlzIHRoZSBtYXJrIHRlbGxzIHRoZW0KICAgYXBhcnQgYnkgc2hhcGU6IGZpbGxlZCwgb3V0bGluZWQsIGhhbGYgb2YgZWFjaCwgcm91bmQuICovCi5zcmN7d2hpdGUtc3BhY2U6bm93cmFwfQouc3JjOjpiZWZvcmV7Y29udGVudDoiIjtkaXNwbGF5OmlubGluZS1ibG9jazt3aWR0aDo4cHg7aGVpZ2h0OjhweDttYXJnaW4tcmlnaHQ6OHB4Owpib3JkZXI6MXB4IHNvbGlkIHZhcigtLWZnLTIpfQouc3JjLmFwaTo6YmVmb3Jle2JhY2tncm91bmQ6dmFyKC0tZmcpO2JvcmRlci1jb2xvcjp2YXIoLS1mZyl9Ci5zcmMubXNnOjpiZWZvcmV7Ym9yZGVyLWNvbG9yOnZhcigtLWZnKX0KLnNyYy5ib3RoOjpiZWZvcmV7Ym9yZGVyLWNvbG9yOnZhcigtLWZnKTsKYmFja2dyb3VuZDpsaW5lYXItZ3JhZGllbnQoMTM1ZGVnLHZhcigtLWZnKSA1MCUsdHJhbnNwYXJlbnQgNTAlKX0KLnNyYy5yeDo6YmVmb3Jle2JvcmRlci1yYWRpdXM6NTAlfQoKQG1lZGlhIChtYXgtd2lkdGg6NjIwcHgpewo6cm9vdHstLWd1dHRlcjoxNnB4Oy0tYmFyOjU2cHh9Ci5icmFuZCAud29yZHtkaXNwbGF5Om5vbmV9Ci5maW5ke21heC13aWR0aDpub25lfQoua2lja2Vye21hcmdpbi10b3A6MjRweH0KLndob3tnYXA6MTZweH0KLnNpZ2lse3dpZHRoOjU2cHg7aGVpZ2h0OjU2cHg7Zm9udC1zaXplOjIwcHh9Ci5uYW1lc3tmbGV4LWJhc2lzOjB9Ci5jdGF7b3JkZXI6Mzt3aWR0aDoxMDAlO3RleHQtYWxpZ246Y2VudGVyfQoudGlsZXN7Z3JpZC10ZW1wbGF0ZS1jb2x1bW5zOnJlcGVhdCgyLG1pbm1heCgwLDFmcikpO2dhcDoyOHB4IDIwcHh9Ci50aWxlIC5ue2ZvbnQtc2l6ZTozNHB4fQoucGxvdHtnYXA6MXB4fQouaW5kZXh7bWFyZ2luLXRvcDo0NHB4fQovKiBFdmVyeSB0YWJsZSBiZWNvbWVzIGEgc3RhY2sgb2YgcmVjb3JkczogdGhlIGhlYWRsaW5lIHZhbHVlIGxlYWRzIGFuZCB0aGUKICAgcmVzdCBmb2xkcyBpbnRvIGxhYmVsbGVkIGxpbmVzIHVuZGVyIGl0LiAgQSBjb2x1bW4gb2YgcmVwZWF0ZWQgaGVhZGluZ3MgaXMKICAgbm90IGEgdGFibGUgb24gYSBwaG9uZSwgaXQgaXMgYSB3YWxsLiAgVGhlIHBhcnNlciB3cmFwcyB0aGUgcm93cyBpbiBhbgogICBpbXBsaWNpdCB0Ym9keTsgbGVmdCBhIHJvdyBncm91cCwgaXQgZ2V0cyBhbiBhbm9ueW1vdXMgdGFibGUgYXJvdW5kIGl0IGFzCiAgIHdpZGUgYXMgaXRzIGNvbnRlbnQsIGFuZCBzaG9ydCByb3dzIGJlY29tZSBjYXJkcyBhIHRoaXJkIG9mIHRoZSBzY3JlZW4uICovCnRhYmxlLHRib2R5e2Rpc3BsYXk6YmxvY2t9CnRyOmZpcnN0LWNoaWxke2Rpc3BsYXk6bm9uZX0KdHJ7ZGlzcGxheTpibG9jaztwYWRkaW5nOjEycHh9CnRke2Rpc3BsYXk6YmxvY2s7d2lkdGg6YXV0bztwYWRkaW5nOjA7dGV4dC1hbGlnbjpsZWZ0fQp0ZDpub3QoW2RhdGEtbGFiZWxdKSx0ZFtkYXRhLWxhYmVsXVtkYXRhLWVtcHR5XXtkaXNwbGF5Om5vbmV9CnRkW2RhdGEtbWFpbl17Zm9udC1zaXplOjE1cHg7bGluZS1oZWlnaHQ6MS40O3BhZGRpbmctYm90dG9tOjRweDttYXgtd2lkdGg6bm9uZX0KdGRbZGF0YS1sYWJlbF06bm90KFtkYXRhLW1haW5dKXtmb250LXNpemU6MTNweDtsaW5lLWhlaWdodDoxLjZ9Ci5re2Rpc3BsYXk6aW5saW5lO2NvbG9yOnZhcigtLWZnLTMpfQp9CgpAbWVkaWEgcHJpbnR7Cjpyb290ewpjb2xvci1zY2hlbWU6bGlnaHQ7Ci0tYmc6I2ZmZmZmZjstLWZnOiMwYTBhMGE7LS1mZy0yOiM2YjZiNmI7LS1mZy0zOiNhM2EzYTM7LS1saW5lOiNlNWU1ZTU7LS11cDojMWE3ZjM3OwotLXplYnJhOiNmNWY1ZjU7LS1ob3ZlcjojZWJlYmViOwp9Ci50b3B7cG9zaXRpb246c3RhdGljfQouZmluZCwudGhlbWUsLmluZGV4LC5jb3B5LC5jaGV2e2Rpc3BsYXk6bm9uZX0KLmhlYWR7YnJlYWstYWZ0ZXI6YXZvaWR9CnRye2JyZWFrLWluc2lkZTphdm9pZH0KfQpAbWVkaWEgKHByZWZlcnMtcmVkdWNlZC1tb3Rpb246cmVkdWNlKXsKaHRtbHtzY3JvbGwtYmVoYXZpb3I6YXV0b30KKnt0cmFuc2l0aW9uOm5vbmUgIWltcG9ydGFudDthbmltYXRpb246bm9uZSAhaW1wb3J0YW50fQp9CgoucmF3e21hcmdpbjo4cHggMDtib3JkZXI6MXB4IHNvbGlkIHZhcigtLWxpbmUpO2JvcmRlci1yYWRpdXM6OHB4O292ZXJmbG93OmhpZGRlbn0KLnJhdyBzdW1tYXJ5e2N1cnNvcjpwb2ludGVyO3BhZGRpbmc6MTBweCAxMnB4O2NvbG9yOnZhcigtLWZnLTIpO2ZvbnQtc2l6ZToxM3B4fQoubm9yZXN7ZGlzcGxheTpub25lO21hcmdpbjoyNHB4IDA7dGV4dC1hbGlnbjpjZW50ZXJ9Cm1haW4ucSAubm9yZXN7ZGlzcGxheTpibG9ja30KLmNvcHkuZG9uZXtjb2xvcjp2YXIoLS11cCl9Ci5icmFuZCAud29yZHtsZXR0ZXItc3BhY2luZzouMTJlbX0K").decode("utf-8")
+    js = _b64.b64decode("CihmdW5jdGlvbigpewp2YXIgcm9vdD1kb2N1bWVudC5kb2N1bWVudEVsZW1lbnQ7CnZhciBidG49ZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ3RoZW1lJyk7CnZhciBLRVk9J2N5YmVyLW9zaW50LXRoZW1lJzsKdHJ5e3ZhciBzYXZlZD1sb2NhbFN0b3JhZ2UuZ2V0SXRlbShLRVkpO2lmKHNhdmVkKXJvb3Quc2V0QXR0cmlidXRlKCdkYXRhLXRoZW1lJyxzYXZlZCl9Y2F0Y2goZSl7fQpmdW5jdGlvbiBkYXJrKCl7CnZhciBzZXQ9cm9vdC5nZXRBdHRyaWJ1dGUoJ2RhdGEtdGhlbWUnKTsKaWYoc2V0KXJldHVybiBzZXQ9PT0nZGFyayc7CnJldHVybiBtYXRjaE1lZGlhKCcocHJlZmVycy1jb2xvci1zY2hlbWU6IGRhcmspJykubWF0Y2hlczsKfQppZihidG4pe2J0bi5hZGRFdmVudExpc3RlbmVyKCdjbGljaycsZnVuY3Rpb24oKXsKdmFyIG5leHQ9ZGFyaygpPydsaWdodCc6J2RhcmsnOwpyb290LnNldEF0dHJpYnV0ZSgnZGF0YS10aGVtZScsbmV4dCk7CnRyeXtsb2NhbFN0b3JhZ2Uuc2V0SXRlbShLRVksbmV4dCl9Y2F0Y2goZSl7fQp9KTt9CnZhciBzZWN0cz1bXS5zbGljZS5jYWxsKGRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoJy5zZWN0JykpOwp2YXIgc3RyaXA9ZG9jdW1lbnQucXVlcnlTZWxlY3RvcignLmluZGV4IC5zdHJpcCcpOwp2YXIgbGlua3M9W10uc2xpY2UuY2FsbChkb2N1bWVudC5xdWVyeVNlbGVjdG9yQWxsKCcuaW5kZXggYScpKTsKZnVuY3Rpb24gZWRnZSgpewppZihzdHJpcClzdHJpcC5jbGFzc0xpc3QudG9nZ2xlKCdtb3JlJyxzdHJpcC5zY3JvbGxMZWZ0K3N0cmlwLmNsaWVudFdpZHRoPHN0cmlwLnNjcm9sbFdpZHRoLTEpOwp9CmlmKHN0cmlwKXtzdHJpcC5hZGRFdmVudExpc3RlbmVyKCdzY3JvbGwnLGVkZ2Use3Bhc3NpdmU6dHJ1ZX0pO2VkZ2UoKTt9CnZhciBxPWRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdxJyk7CmlmKHEpewp2YXIgbmF2bGluaz17fTsKbGlua3MuZm9yRWFjaChmdW5jdGlvbihhKXtuYXZsaW5rW2EuaGFzaC5zbGljZSgxKV09YTt9KTsKdmFyIGluZGV4PXNlY3RzLm1hcChmdW5jdGlvbihzZWN0KXsKdmFyIHJvd3M9W10uc2xpY2UuY2FsbChzZWN0LnF1ZXJ5U2VsZWN0b3JBbGwoJ3RyJykpLmZpbHRlcihmdW5jdGlvbih0cil7CnJldHVybiAhdHIuY2VsbHMubGVuZ3RofHx0ci5jZWxsc1swXS50YWdOYW1lIT09J1RIJzsKfSk7CnJldHVybntzZWN0OnNlY3QsYmFkZ2U6c2VjdC5xdWVyeVNlbGVjdG9yKCcubicpLHRvdGFsOnNlY3QucXVlcnlTZWxlY3RvcignLm4nKT9zZWN0LnF1ZXJ5U2VsZWN0b3IoJy5uJykudGV4dENvbnRlbnQ6Jycscm93czpyb3dzLHRleHQ6cm93cy5tYXAoZnVuY3Rpb24odHIpe3JldHVybiB0ci50ZXh0Q29udGVudC50b0xvd2VyQ2FzZSgpfSl9Owp9KTsKdmFyIGVtcHR5PWRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoJ3AnKTsKZW1wdHkuY2xhc3NOYW1lPSdub3JlcyBjYXBzJzsKZW1wdHkudGV4dENvbnRlbnQ9J1NvbnXDpyB5b2suJzsKdmFyIG1haW49ZG9jdW1lbnQucXVlcnlTZWxlY3RvcignbWFpbicpOwppZihtYWluKW1haW4uYXBwZW5kQ2hpbGQoZW1wdHkpOwp2YXIgdGltZXI9MDsKZnVuY3Rpb24gcnVuKCl7CnZhciB0ZXJtPXEudmFsdWUudHJpbSgpLnRvTG93ZXJDYXNlKCk7CnZhciBhbnk9ZmFsc2U7CmluZGV4LmZvckVhY2goZnVuY3Rpb24oZW50cnkpewp2YXIgbmFycm93ZWQ9ISF0ZXJtOwp2YXIgaGl0cz0wOwpmb3IodmFyIGk9MDtpPGVudHJ5LnJvd3MubGVuZ3RoO2krKyl7CnZhciBvaz0hdGVybXx8ZW50cnkudGV4dFtpXS5pbmRleE9mKHRlcm0pPi0xOwplbnRyeS5yb3dzW2ldLmhpZGRlbj0hb2s7CmlmKG9rKXtlbnRyeS5yb3dzW2ldLmNsYXNzTGlzdC50b2dnbGUoJ2FsdCcsaGl0cyUyPT09MSk7aGl0cysrO30KfQppZihlbnRyeS5iYWRnZSl7CmVudHJ5LmJhZGdlLnRleHRDb250ZW50PW5hcnJvd2VkP1N0cmluZyhoaXRzKTplbnRyeS50b3RhbDsKZW50cnkuYmFkZ2UuY2xhc3NOYW1lPW5hcnJvd2VkJiZoaXRzPyduIGhpdCc6J24nOwp9CnZhciBsaXZlPSFuYXJyb3dlZHx8aGl0cz4wOwplbnRyeS5zZWN0LmhpZGRlbj0hbGl2ZTsKdmFyIGxpbms9bmF2bGlua1tlbnRyeS5zZWN0LmlkXTsKaWYobGluayl7CmxpbmsuaGlkZGVuPSFsaXZlOwppZihsaW5rLmxhc3RDaGlsZCYmbGluay5sYXN0Q2hpbGQudGFnTmFtZT09PSdCJylsaW5rLmxhc3RDaGlsZC50ZXh0Q29udGVudD1uYXJyb3dlZD9TdHJpbmcoaGl0cyk6ZW50cnkudG90YWw7Cn0KaWYobmFycm93ZWQmJmxpdmUpZW50cnkuc2VjdC5vcGVuPXRydWU7CmlmKGxpdmUpYW55PXRydWU7Cn0pOwplbXB0eS5zdHlsZS5kaXNwbGF5PSh0ZXJtJiYhYW55KT8nYmxvY2snOidub25lJzsKfQpxLmFkZEV2ZW50TGlzdGVuZXIoJ2lucHV0JyxmdW5jdGlvbigpe2NsZWFyVGltZW91dCh0aW1lcik7dGltZXI9c2V0VGltZW91dChydW4sMTEwKTt9KTsKfQpzZWN0cy5mb3JFYWNoKGZ1bmN0aW9uKHNlY3Qpewp2YXIgY2J0bj1zZWN0LnF1ZXJ5U2VsZWN0b3IoJy5jb3B5Jyk7CmlmKCFjYnRuKXJldHVybjsKY2J0bi5hZGRFdmVudExpc3RlbmVyKCdjbGljaycsZnVuY3Rpb24oZSl7CmUucHJldmVudERlZmF1bHQoKTtlLnN0b3BQcm9wYWdhdGlvbigpOwp2YXIgbGluZXM9W107CltdLnNsaWNlLmNhbGwoc2VjdC5xdWVyeVNlbGVjdG9yQWxsKCd0cicpKS5mb3JFYWNoKGZ1bmN0aW9uKHRyKXsKaWYodHIuaGlkZGVuKXJldHVybjsKbGluZXMucHVzaChbXS5zbGljZS5jYWxsKHRyLmNlbGxzKS5tYXAoZnVuY3Rpb24odGQpe3JldHVybiB0ZC50ZXh0Q29udGVudC5yZXBsYWNlKC9ccysvZywnICcpLnRyaW0oKX0pLmpvaW4oJ1x0JykpOwp9KTsKdmFyIHRleHQ9bGluZXMuam9pbignXG4nKTsKdmFyIGRvbmU9ZnVuY3Rpb24oKXtjYnRuLmNsYXNzTGlzdC5hZGQoJ2RvbmUnKTtzZXRUaW1lb3V0KGZ1bmN0aW9uKCl7Y2J0bi5jbGFzc0xpc3QucmVtb3ZlKCdkb25lJyl9LDEyMDApfTsKaWYobmF2aWdhdG9yLmNsaXBib2FyZCYmbmF2aWdhdG9yLmNsaXBib2FyZC53cml0ZVRleHQpe25hdmlnYXRvci5jbGlwYm9hcmQud3JpdGVUZXh0KHRleHQpLnRoZW4oZG9uZSxmdW5jdGlvbigpe30pO30KZWxzZSBkb25lKCk7Cn0pOwp9KTsKfSkoKTsK").decode("utf-8")
+    return css, js
+
+
 def mobius_build_html_report(resp, aranan, search_type=None):
-    """Temiz profil-tarzı HTML OSINT raporu (siyah, duzenli, okunakli)."""
+    """Telescan tarzı HTML OSINT raporu — Türkçe etiketler."""
     if not isinstance(resp, dict):
         resp = {"raw": str(resp)}
 
@@ -4130,6 +4211,7 @@ def mobius_build_html_report(resp, aranan, search_type=None):
     count = resp.get("results_count")
     kind = resp.get("kind") or resp.get("type") or "—"
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
+    CSS, JS = _mobius_css_js()
 
     sections_raw = _mobius_extract_all(resp)
 
@@ -4210,13 +4292,12 @@ def mobius_build_html_report(resp, aranan, search_type=None):
                 return rec[k]
         return None
 
-    # --- ana profil ozeti (en zengin kayit) ---
     main = {}
-    best_score = -1
+    best = -1
     for rec in profiles:
         score = sum(1 for v in rec.values() if v not in (None, "", [], {}))
-        if score > best_score:
-            best_score = score
+        if score > best:
+            best = score
             main = rec
 
     uid = g(main, "user_id", "Telegram ID", "tg_id", "TelegramID") or ""
@@ -4229,10 +4310,8 @@ def mobius_build_html_report(resp, aranan, search_type=None):
     bio = g(main, "bio", "О себе") or ""
     phone = g(main, "phone", "Phone") or ""
 
-    # stats
     n_groups = len(chats)
     n_msgs = len(messages)
-    # API stats from profile if present
     api_chats = g(main, "Найдено чатов", "chats_count")
     api_msgs = g(main, "Сообщений в чатах", "messages_count")
     try:
@@ -4250,9 +4329,7 @@ def mobius_build_html_report(resp, aranan, search_type=None):
     last_msg = g(main, "Последнее сообщение", "last_message") or ""
     hist_u = g(main, "usernames_history", "История юзернеймов") or ""
     hist_n = g(main, "first_names_history", "История имён") or ""
-    gifts_n = g(main, "gifts_count", "Всего подарков") or len(gifts)
 
-    # en aktif sohbet
     top_chat_name, top_chat_cnt = "", 0
     for c in chats:
         title = g(c, "Название чата", "title", "Чат") or ""
@@ -4265,105 +4342,123 @@ def mobius_build_html_report(resp, aranan, search_type=None):
             top_chat_cnt = cnt
             top_chat_name = str(title)
 
-    # avatar initials
-    initials = ""
+    initials = "?"
     for ch in str(display):
         if ch.isalnum():
-            initials += ch.upper()
-            if len(initials) >= 2:
-                break
-    if not initials:
-        initials = "TG"
+            initials = ch.upper()
+            break
 
-    tg_link = ""
+    chips = []
+    if uid:
+        chips.append("<span class='chip'>ID <b>" + esc(uid) + "</b></span>")
     if uname:
-        tg_link = "https://t.me/" + uname
-    elif uid:
-        tg_link = "tg://user?id=" + str(uid)
+        chips.append("<span class='chip'><a href='https://t.me/" + esc(uname) + "'>@" + esc(uname) + "</a></span>")
+    if phone:
+        chips.append("<span class='chip'>" + esc(phone) + "</span>")
+    chips_html = "".join(chips)
 
-    def row(label, value, link=None):
-        if value in (None, "", "—"):
+    def fact(label, value_html):
+        if not value_html:
             return ""
-        v = esc(value)
-        if link:
-            v = '<a href="' + esc(link) + '">' + v + "</a>"
         return (
-            '<div class="row">'
-            '<div class="lbl">' + esc(label) + "</div>"
-            '<div class="val">' + v + "</div>"
-            "</div>"
+            "<div class='fact'><span class='l caps'>" + esc(label) + "</span>"
+            "<span class='v'>" + value_html + "</span></div>"
         )
 
-    def list_block(title, items, render_fn):
-        if not items:
-            return (
-                '<section class="block">'
-                '<div class="block-title">' + esc(title) + "</div>"
-                '<div class="muted">Kayıt yok</div>'
-                "</section>"
-            )
-        body = "".join(render_fn(i, it) for i, it in enumerate(items, 1))
+    period = ""
+    if first_msg or last_msg:
+        period = esc(str(first_msg or "—")) + " — " + esc(str(last_msg or "—"))
+    most = ""
+    if top_chat_name:
+        most = esc(top_chat_name) + " — " + str(top_chat_cnt) + " mesaj"
+
+    def sect(sid, title, n, inner):
+        if not inner.strip():
+            inner = "<p class='note'>Kayıt bulunamadı.</p>"
         return (
-            '<section class="block">'
-            '<div class="block-title">' + esc(title) + " · " + str(len(items)) + "</div>"
-            + body +
-            "</section>"
+            "<details class='sect' id='" + sid + "' open>"
+            "<summary class='head'><i class='chev'></i>"
+            "<span class='t'>" + esc(title) + "</span>"
+            "<b class='n'>" + str(n) + "</b>"
+            "<span class='copy' role='button' tabindex='0' aria-label='Tabloyu kopyala'>Kopyala</span>"
+            "</summary><div class='fold'>" + inner + "</div></details>"
         )
 
-    def render_chat(i, rec):
-        title = g(rec, "Название чата", "title", "Чат") or "—"
-        link = g(rec, "Ссылка / Юзернейм", "username") or ""
-        cnt = g(rec, "Сообщений пользователя", "messages_count") or ""
-        first = g(rec, "Первое сообщение в чате", "first_message") or ""
-        last = g(rec, "Последнее сообщение в чате", "last_message") or ""
+    def table(headers, rows):
+        if not rows:
+            return ""
+        th = "".join("<th>" + esc(h) + "</th>" for h in ([""] + headers))
+        body = []
+        for i, cells in enumerate(rows, 1):
+            tds = ["<td>" + str(i) + "</td>"]
+            for j, c in enumerate(cells):
+                main_attr = " data-main" if j == 0 else ""
+                lab = headers[j] if j < len(headers) else ""
+                tds.append("<td data-label='" + esc(lab) + "'" + main_attr + ">" + c + "</td>")
+            body.append("<tr>" + "".join(tds) + "</tr>")
+        return "<table><tr>" + th + "</tr>" + "".join(body) + "</table>"
+
+    name_rows = []
+    if display:
+        name_rows.append([esc(display), "<b>şimdi</b>"])
+    if hist_n:
+        for part in re.split(r"[,;|\n]+", str(hist_n)):
+            part = part.strip()
+            if part and part != display:
+                name_rows.append([esc(part), "—"])
+
+    uname_rows = []
+    if uname:
+        uname_rows.append(["@" + esc(uname), "<b>şimdi</b>"])
+    if hist_u:
+        for part in re.split(r"[,;|\n@]+", str(hist_u)):
+            part = part.strip().lstrip("@")
+            if part and part != uname:
+                uname_rows.append(["@" + esc(part), "—"])
+
+    group_rows = []
+    for c in chats:
+        title = g(c, "Название чата", "title", "Чат") or "—"
+        link = g(c, "Ссылка / Юзернейм", "username") or ""
+        cnt = g(c, "Сообщений пользователя", "messages_count") or ""
+        last = g(c, "Последнее сообщение в чате", "last_message") or ""
         href = ""
-        if link and str(link).startswith("@"):
-            href = "https://t.me/" + str(link).lstrip("@")
-        elif link and "t.me" in str(link):
-            href = str(link)
-        name_html = esc(title)
+        if link:
+            s = str(link)
+            if s.startswith("@"):
+                href = "https://t.me/" + s.lstrip("@")
+            elif "t.me" in s:
+                href = s
+        title_h = esc(title)
         if href:
-            name_html = '<a href="' + esc(href) + '">' + name_html + "</a>"
-        extra = []
-        if cnt:
-            extra.append(esc(str(cnt)) + " mesaj")
-        if first or last:
-            extra.append(esc(str(first or "—")) + " — " + esc(str(last or "—")))
-        return (
-            '<div class="item">'
-            '<div class="item-main">' + name_html + "</div>"
-            + ('<div class="item-sub">' + " · ".join(extra) + "</div>" if extra else "")
-            + "</div>"
-        )
+            title_h = "<a href='" + esc(href) + "'>" + title_h + "</a>"
+        muted = (" <span class='muted'>" + esc(link) + "</span>") if link else ""
+        group_rows.append([title_h + muted, esc(str(cnt) if cnt else "—"), esc(str(last) if last else "—")])
 
-    def render_msg(i, rec):
-        chat = g(rec, "Чат") or ""
-        dt = g(rec, "Дата и время") or ""
-        text = g(rec, "Текст сообщения") or ""
-        return (
-            '<div class="item">'
-            '<div class="item-main">' + esc(text) + "</div>"
-            '<div class="item-sub">' + esc(chat) + ((" · " + esc(dt)) if dt else "") + "</div>"
-            "</div>"
-        )
+    msg_rows = []
+    for mrec in messages:
+        text = g(mrec, "Текст сообщения") or "—"
+        chat = g(mrec, "Чат") or "—"
+        dt = g(mrec, "Дата и время") or "—"
+        msg_rows.append([esc(text), esc(chat), esc(dt)])
 
-    def render_gift(i, rec):
-        parts = []
-        for k in ("Подарок", "NFT Подарок", "gift_received", "gift_sent", "Модель", "Оценка", "Отправитель", "Всего подарков", "name", "Имя"):
-            v = g(rec, k)
+    gift_rows = []
+    for gf in gifts:
+        cells = []
+        for k in ("Подарок", "NFT Подарок", "Отправитель", "Модель", "Оценка", "gift_received", "gift_sent", "Всего подарков"):
+            v = g(gf, k)
             if v:
-                parts.append(esc(k) + ": " + esc(v))
-        if not parts:
-            for k, v in rec.items():
+                cells.append(esc(_mobius_tr_key(k) + ": " + str(v)))
+        if not cells:
+            for k, v in gf.items():
                 if v not in (None, "", [], {}) and not isinstance(v, (dict, list)):
-                    parts.append(esc(k) + ": " + esc(v))
-        return '<div class="item"><div class="item-main">' + "<br/>".join(parts[:8]) + "</div></div>"
+                    cells.append(esc(_mobius_tr_key(k) + ": " + str(v)))
+        gift_rows.append(["<br/>".join(cells[:8])])
 
-    def render_leak(i, rec):
-        db = g(rec, "database") or ""
-        lines = []
-        if db:
-            lines.append('<span class="tag">' + esc(db) + "</span>")
+    leak_rows = []
+    for lk in leaks:
+        db = g(lk, "database") or "—"
+        parts = ["<span class='src msg'>" + esc(db) + "</span>"]
         for label, keys in (
             ("E-posta", ("Email", "email")),
             ("Telefon", ("Phone", "phone")),
@@ -4373,215 +4468,108 @@ def mobius_build_html_report(resp, aranan, search_type=None):
             ("IP", ("IP",)),
             ("Link", ("Link",)),
         ):
-            v = g(rec, *keys)
+            v = g(lk, *keys)
             if v:
-                lines.append("<b>" + esc(label) + ":</b> " + esc(v))
-        # kalan alanlar
+                parts.append("<b>" + esc(label) + ":</b> " + esc(v))
         used = {"database", "Email", "email", "Phone", "phone", "Password", "password",
                 "NickName", "username", "FullName", "name", "IP", "Link"}
-        for k, v in rec.items():
+        for k, v in lk.items():
             if k in used or v in (None, "", [], {}) or isinstance(v, (dict, list)):
                 continue
-            lines.append("<b>" + esc(k) + ":</b> " + esc(v))
-        return '<div class="item"><div class="item-main">' + "<br/>".join(lines) + "</div></div>"
+            parts.append("<b>" + esc(_mobius_tr_key(k)) + ":</b> " + esc(v))
+        leak_rows.append([" · ".join(parts)])
 
-    def render_profile_extra(i, rec):
-        # ana profil disindakiler
-        lines = []
-        for k, v in rec.items():
+    other_rows = []
+    for ot in others + [p for p in profiles if p is not main][:50]:
+        parts = []
+        for k, v in ot.items():
             if v in (None, "", [], {}) or isinstance(v, (dict, list)):
                 continue
-            lines.append("<b>" + esc(k) + ":</b> " + esc(v))
-        return '<div class="item"><div class="item-main">' + "<br/>".join(lines[:20]) + "</div></div>"
+            parts.append("<b>" + esc(_mobius_tr_key(k)) + ":</b> " + esc(v))
+        if parts:
+            other_rows.append([" · ".join(parts[:14])])
 
-    # ham api
-    raw_parts = []
+    raw_inner = []
     for title, payload in source_blocks:
         try:
             dump = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
         except Exception:
             dump = str(payload)
-        raw_parts.append(
-            '<details class="raw">'
-            "<summary>" + esc(title) + "</summary>"
-            "<pre>" + esc(dump) + "</pre>"
-            "</details>"
+        raw_inner.append(
+            "<details class='raw'><summary>" + esc(title) + "</summary>"
+            "<pre style='white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:360px;overflow:auto;margin:0;padding:12px;border-top:1px solid var(--line)'>"
+            + esc(dump) + "</pre></details>"
         )
 
-    open_btn = ""
-    if tg_link:
-        open_btn = (
-            '<a class="btn" href="' + esc(tg_link) + '" target="_blank" rel="noopener">'
-            "OPEN IN TELEGRAM</a>"
-        )
-
-    period = ""
-    if first_msg or last_msg:
-        period = esc(str(first_msg or "—")) + " — " + esc(str(last_msg or "—"))
-
-    css = """
-* { box-sizing: border-box; }
-html, body {
-  margin: 0; padding: 0;
-  background: #000;
-  color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  line-height: 1.4;
-  -webkit-font-smoothing: antialiased;
-}
-a { color: #fff; }
-.page { max-width: 520px; margin: 0 auto; padding: 20px 18px 48px; }
-.top {
-  color: #888; font-size: 12px; letter-spacing: 1px;
-  text-transform: uppercase; margin-bottom: 28px;
-}
-.profile {
-  display: flex; gap: 14px; align-items: center; margin-bottom: 18px;
-}
-.avatar {
-  width: 64px; height: 64px; border-radius: 50%;
-  background: #1a1a1a; color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 22px; font-weight: 700; flex-shrink: 0;
-  border: 1px solid #2a2a2a;
-}
-.name { font-size: 26px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.3px; }
-.sub { color: #aaa; font-size: 14px; }
-.sub a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
-.btn {
-  display: block; text-align: center; text-decoration: none;
-  background: #fff; color: #000; font-weight: 700; font-size: 13px;
-  letter-spacing: 1px; padding: 14px; border-radius: 10px;
-  margin: 18px 0 28px;
-}
-.stats {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 28px 16px;
-  margin: 8px 0 32px; padding: 8px 0 28px;
-  border-bottom: 1px solid #1a1a1a;
-}
-.stat .n { font-size: 36px; font-weight: 700; letter-spacing: -1px; }
-.stat .l {
-  margin-top: 4px; color: #777; font-size: 11px;
-  letter-spacing: 1.2px; text-transform: uppercase;
-}
-.block { margin: 0 0 28px; padding: 0 0 24px; border-bottom: 1px solid #1a1a1a; }
-.block-title {
-  color: #777; font-size: 11px; letter-spacing: 1.4px;
-  text-transform: uppercase; margin-bottom: 10px;
-}
-.row { margin-bottom: 16px; }
-.row .lbl {
-  color: #777; font-size: 11px; letter-spacing: 1.2px;
-  text-transform: uppercase; margin-bottom: 6px;
-}
-.row .val { font-size: 17px; font-weight: 600; word-break: break-word; }
-.row .val a { text-decoration: underline; text-underline-offset: 3px; }
-.item {
-  padding: 12px 0; border-bottom: 1px solid #141414;
-}
-.item:last-child { border-bottom: none; }
-.item-main { font-size: 15px; font-weight: 500; word-break: break-word; }
-.item-sub { margin-top: 4px; color: #777; font-size: 12px; }
-.tag {
-  display: inline-block; font-size: 11px; color: #000; background: #fff;
-  padding: 2px 8px; border-radius: 6px; margin-bottom: 6px; font-weight: 700;
-}
-.muted { color: #666; font-size: 13px; }
-.raw {
-  margin: 8px 0; border: 1px solid #1a1a1a; border-radius: 10px; overflow: hidden;
-}
-.raw summary {
-  cursor: pointer; padding: 12px 14px; color: #aaa; font-size: 13px;
-  list-style: none;
-}
-.raw summary::-webkit-details-marker { display: none; }
-.raw pre {
-  margin: 0; padding: 12px 14px; border-top: 1px solid #1a1a1a;
-  background: #0a0a0a; color: #bbb; font-size: 11px;
-  max-height: 360px; overflow: auto; white-space: pre-wrap; word-break: break-word;
-}
-.footer {
-  margin-top: 20px; color: #555; font-size: 12px; text-align: center;
-}
-.nav {
-  display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px;
-}
-.nav a {
-  color: #aaa; text-decoration: none; font-size: 12px;
-  border: 1px solid #222; border-radius: 999px; padding: 6px 10px;
-}
-.bio {
-  color: #bbb; font-size: 14px; margin: 10px 0 0; line-height: 1.5;
-}
-"""
-
-    html_doc = (
-        "<!DOCTYPE html><html lang=\"tr\"><head>"
-        "<meta charset=\"UTF-8\"/>"
-        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/>"
-        "<title>" + esc(display) + " · OSINT</title>"
-        "<style>" + css + "</style></head><body>"
-        "<div class=\"page\">"
-        "<div class=\"top\">USER REPORT · " + esc(now) + "</div>"
-        "<div class=\"profile\">"
-        "<div class=\"avatar\">" + esc(initials) + "</div>"
-        "<div>"
-        "<div class=\"name\">" + esc(display) + "</div>"
-        "<div class=\"sub\">"
-        + (("ID " + esc(uid) + "  ") if uid else "")
-        + (('<a href="https://t.me/' + esc(uname) + '">@' + esc(uname) + "</a>") if uname else esc(str(aranan)))
-        + "</div>"
-        + (('<div class="bio">' + esc(bio) + "</div>") if bio else "")
-        + "</div></div>"
-        + open_btn
-        + '<div class="stats">'
-        '<div class="stat"><div class="n">' + str(n_groups) + '</div><div class="l">Groups</div></div>'
-        '<div class="stat"><div class="n">' + str(n_msgs) + '</div><div class="l">Messages</div></div>'
-        '<div class="stat"><div class="n">' + str(len(gifts)) + '</div><div class="l">Gifts</div></div>'
-        '<div class="stat"><div class="n">' + str(len(leaks)) + '</div><div class="l">Leaks</div></div>'
-        "</div>"
-        '<nav class="nav">'
-        '<a href="#info">Info</a>'
-        '<a href="#groups">Groups</a>'
-        '<a href="#messages">Messages</a>'
-        '<a href="#gifts">Gifts</a>'
-        '<a href="#leaks">Leaks</a>'
-        '<a href="#raw">Raw API</a>'
-        "</nav>"
-        '<section class="block" id="info">'
-        '<div class="block-title">Info</div>'
-        + row("Query", aranan)
-        + row("Type", tip)
-        + row("API", kind)
-        + row("Elapsed", (str(elapsed) + " sn") if elapsed is not None else None)
-        + row("Sources", count)
-        + row("Phone", phone)
-        + row("Username history", hist_u)
-        + row("Name history", hist_n)
-        + row("First and last message", period if period else None)
-        + row(
-            "Writes the most in",
-            (top_chat_name + " — " + str(top_chat_cnt) + " messages") if top_chat_name else None,
-        )
-        + "</section>"
-        + '<div id="groups">' + list_block("Groups / Chats", chats, render_chat) + "</div>"
-        + '<div id="messages">' + list_block("Messages", messages, render_msg) + "</div>"
-        + '<div id="gifts">' + list_block("Gifts / NFT", gifts, render_gift) + "</div>"
-        + '<div id="leaks">' + list_block("Leaks / Breaches", leaks, render_leak) + "</div>"
-        + (
-            list_block("Other profiles", [p for p in profiles if p is not main][:30], render_profile_extra)
-            if len(profiles) > 1 else ""
-        )
-        + '<section class="block" id="raw">'
-        '<div class="block-title">Raw API · ' + str(len(source_blocks)) + "</div>"
-        + "".join(raw_parts)
-        + "</section>"
-        + '<div class="footer">Cyber Search · Telegram OSINT · @hackledin</div>'
-        + "</div></body></html>"
+    nav = (
+        "<nav class='index' aria-label='Bölümler'><div class='strip'>"
+        "<a href='#names'><span>İsimler</span><b>" + str(len(name_rows)) + "</b></a>"
+        "<a href='#usernames'><span>Kullanıcı adları</span><b>" + str(len(uname_rows)) + "</b></a>"
+        "<a href='#groups'><span>Gruplar</span><b>" + str(len(group_rows)) + "</b></a>"
+        "<a href='#messages'><span>Mesajlar</span><b>" + str(len(msg_rows)) + "</b></a>"
+        "<a href='#gifts'><span>Hediyeler</span><b>" + str(len(gift_rows)) + "</b></a>"
+        "<a href='#leaks'><span>Leak</span><b>" + str(len(leak_rows)) + "</b></a>"
+        "<a href='#other'><span>Diğer</span><b>" + str(len(other_rows)) + "</b></a>"
+        "<a href='#raw'><span>Ham API</span><b>" + str(len(source_blocks)) + "</b></a>"
+        "</div></nav>"
     )
 
-    # fix gifts stat - the ternary mess above is broken; rebuild stats cleanly in string already partially wrong
-    return html_doc
+    facts = (
+        fact("Sorgu", esc(aranan))
+        + fact("Tip", esc(tip))
+        + fact("API", esc(kind))
+        + fact("Süre", (str(elapsed) + " sn") if elapsed is not None else "")
+        + fact("Kaynak sayısı", esc(count) if count is not None else "")
+        + fact("Biyografi", esc(bio) if bio else "")
+        + fact("İlk ve son mesaj", period)
+        + fact("En çok yazdığı yer", most)
+        + fact("Kullanıcı adı geçmişi", esc(hist_u) if hist_u else "")
+        + fact("İsim geçmişi", esc(hist_n) if hist_n else "")
+    )
+
+    doc = (
+        "<!doctype html><html lang='tr'><head>"
+        "<meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>Cyber Search — " + esc(display) + "</title>"
+        "<style>" + CSS + "</style></head><body>"
+        "<header class='top'><div class='wrap'>"
+        "<span class='brand'><span class='word'>Cyber Search</span></span>"
+        "<input class='find' id='q' type='search' placeholder='Raporda ara' autocomplete='off' spellcheck='false' aria-label='Raporda ara'>"
+        "<button class='theme' id='theme' type='button' aria-label='Temayı değiştir'>Tema</button>"
+        "</div></header>"
+        "<div class='wrap page'>"
+        "<p class='caps kicker'>Kullanıcı raporu · " + esc(now) + "</p>"
+        "<section class='hero'>"
+        "<div class='who'>"
+        "<div class='sigil' aria-hidden='true'>" + esc(initials) + "</div>"
+        "<div class='names'><h1>" + esc(display) + "</h1>"
+        "<div class='chips'>" + chips_html + "</div></div></div>"
+        "<div class='tiles'>"
+        "<div class='tile'><span class='n'>" + str(n_groups) + "</span><span class='l caps'>grup</span></div>"
+        "<div class='tile'><span class='n'>" + str(n_msgs) + "</span><span class='l caps'>mesaj</span></div>"
+        "<div class='tile'><span class='n'>" + str(len(gifts)) + "</span><span class='l caps'>hediye</span></div>"
+        "<div class='tile'><span class='n'>" + str(len(leaks)) + "</span><span class='l caps'>leak</span></div>"
+        "</div>"
+        "<div class='facts'>" + facts + "</div>"
+        "</section>"
+        + nav
+        + "<main>"
+        + sect("names", "İsim geçmişi", len(name_rows), table(["Değer", "Bilinen"], name_rows))
+        + sect("usernames", "@kullanıcı adı geçmişi", len(uname_rows), table(["Değer", "Bilinen"], uname_rows))
+        + sect("groups", "Gruplar", len(group_rows), table(["Sohbet", "Mesaj", "Son aktivite"], group_rows))
+        + sect("messages", "Mesajlar", len(msg_rows), table(["Mesaj", "Sohbet", "Tarih"], msg_rows))
+        + sect("gifts", "Hediyeler / NFT", len(gift_rows), table(["Detay"], gift_rows))
+        + sect("leaks", "Leak / Breach kayıtları", len(leak_rows), table(["Kayıt"], leak_rows))
+        + sect("other", "Diğer kayıtlar", len(other_rows), table(["Kayıt"], other_rows))
+        + sect("raw", "Ham API kaynakları", len(source_blocks), "".join(raw_inner) if raw_inner else "")
+        + "</main>"
+        "<p class='caps' style='margin-top:40px;text-align:center'>Cyber Search · Telegram OSINT · @hackledin</p>"
+        "</div>"
+        "<script>" + JS + "</script>"
+        "</body></html>"
+    )
+    return doc
 
 
 def _process_mobius_search(msg, bot_instance, search_type=None):
