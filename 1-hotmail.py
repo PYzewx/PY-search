@@ -11217,86 +11217,151 @@ def _process_turkey(msg, tool, bot_instance):
     else:
         url = url.replace("{tc}", param)
 
-    # Vesika: fotoğraf cevabi
+    # Vesika: fotoğraf cevabi (JSON: durum + veri.vesika base64 JPEG)
     if tool == "vesika":
         try:
-            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=(10, 40), verify=False)
+            import base64
+            import io
+            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=(10, 45), verify=False)
             ctype = (r.headers.get("Content-Type") or "").lower()
             photo_bytes = None
             caption_extra = ""
             if r.status_code != 200:
                 bot_instance.edit_message_text(f"❌ API HTTP {r.status_code}", msg.chat.id, sm.message_id)
                 return
-            # dogrudan gorsel
-            if "image/" in ctype:
+            # dogrudan binary gorsel
+            if "image/" in ctype and r.content and len(r.content) > 200:
                 photo_bytes = r.content
             else:
+                data = None
                 try:
                     data = r.json()
                 except Exception:
                     data = None
                 if isinstance(data, dict):
-                    # hata
-                    if data.get("durum") in ("basarisiz", "error", "fail") or data.get("status") in ("not_found", "error"):
+                    try:
+                        data = _lmnx_sanitize(data)
+                    except Exception:
+                        pass
+                    durum = str(data.get("durum") or data.get("status") or "").lower()
+                    if durum in ("basarisiz", "error", "fail", "not_found", "hata"):
                         err = data.get("hata") or data.get("message") or data.get("msg") or "Kayıt bulunamadı."
                         bot_instance.edit_message_text(f"❌ {err}", msg.chat.id, sm.message_id)
                         return
-                    # base64 / url alanlari
-                    for key in ("vesika", "foto", "photo", "image", "img", "resim", "data", "base64", "url"):
-                        val = data.get(key)
+                    # gorsel alanlarini ara (ust seviye + veri/data ic ice)
+                    candidates = [data]
+                    for nest_key in ("veri", "data", "result", "results", "info", "kayit"):
+                        nested = data.get(nest_key)
+                        if isinstance(nested, dict):
+                            candidates.append(nested)
+                        elif isinstance(nested, list):
+                            for it in nested:
+                                if isinstance(it, dict):
+                                    candidates.append(it)
+
+                    def _decode_b64_image(val):
                         if not val or not isinstance(val, str):
-                            continue
-                        val = val.strip()
-                        if val.startswith("http://") or val.startswith("https://"):
+                            return None
+                        s = val.strip()
+                        if s.startswith("http://") or s.startswith("https://"):
                             try:
-                                ir = requests.get(val, timeout=25, verify=False)
-                                if ir.status_code == 200 and len(ir.content) > 100:
-                                    photo_bytes = ir.content
-                                    break
+                                ir = requests.get(s, timeout=25, verify=False)
+                                if ir.status_code == 200 and len(ir.content) > 200:
+                                    return ir.content
                             except Exception:
-                                pass
-                        else:
-                            # data:image/...;base64,
-                            if "base64," in val:
-                                val = val.split("base64,", 1)[1]
+                                return None
+                            return None
+                        if "base64," in s:
+                            s = s.split("base64,", 1)[1].strip()
+                        # whitespace / newlines temizle
+                        s = "".join(s.split())
+                        # padding
+                        pad = (-len(s)) % 4
+                        if pad:
+                            s += "=" * pad
+                        try:
+                            raw = base64.b64decode(s, validate=False)
+                        except Exception:
                             try:
-                                import base64
-                                photo_bytes = base64.b64decode(val)
-                                if len(photo_bytes) > 100:
-                                    break
-                                photo_bytes = None
+                                raw = base64.b64decode(s + "==")
                             except Exception:
-                                photo_bytes = None
-                    # diger metin bilgisi caption
-                    skip = {"vesika", "foto", "photo", "image", "img", "resim", "data", "base64", "url", "auth", "developer"}
+                                return None
+                        if not raw or len(raw) < 200:
+                            return None
+                        # JPEG / PNG / WEBP imza kontrol (veya yeterli boyut)
+                        if raw[:3] == b"\xff\xd8\xff" or raw[:8] == b"\x89PNG\r\n\x1a\n" or raw[:4] == b"RIFF":
+                            return raw
+                        if len(raw) > 1000:
+                            return raw
+                        return None
+
+                    img_keys = (
+                        "vesika", "foto", "photo", "image", "img", "resim",
+                        "base64", "b64", "picture", "pic", "file", "content",
+                    )
+                    for obj in candidates:
+                        for key in img_keys:
+                            val = obj.get(key)
+                            if not val:
+                                continue
+                            photo_bytes = _decode_b64_image(val if isinstance(val, str) else str(val))
+                            if photo_bytes:
+                                break
+                        if photo_bytes:
+                            break
+                        # bazen dogrudan 'url' alani
+                        if not photo_bytes and isinstance(obj.get("url"), str):
+                            photo_bytes = _decode_b64_image(obj["url"])
+                            if photo_bytes:
+                                break
+
+                    # caption bilgileri (veri dict oncelikli)
+                    info_obj = None
+                    for nest_key in ("veri", "data", "result", "info"):
+                        if isinstance(data.get(nest_key), dict):
+                            info_obj = data[nest_key]
+                            break
+                    if info_obj is None:
+                        info_obj = data
+                    skip = {
+                        "vesika", "foto", "photo", "image", "img", "resim", "data", "base64",
+                        "url", "auth", "developer", "b64", "picture", "pic", "file", "content",
+                    }
                     bits = []
-                    for k, v in data.items():
-                        if k.lower() in skip or v is None:
+                    for k, v in info_obj.items():
+                        if str(k).lower() in skip or v is None:
                             continue
-                        if isinstance(v, (str, int, float)) and str(v).strip():
+                        if isinstance(v, (str, int, float)) and str(v).strip() and len(str(v)) < 200:
                             bits.append(f"{k}: {v}")
                     if bits:
-                        caption_extra = "\n".join(bits[:8])
-                if photo_bytes is None and r.content and len(r.content) > 500 and r.content[:3] == b"\xff\xd8\xff":
-                    photo_bytes = r.content
+                        caption_extra = "\n".join(bits[:10])
+
+                # ham JPEG body
+                if photo_bytes is None and r.content and len(r.content) > 500:
+                    if r.content[:3] == b"\xff\xd8\xff" or r.content[:8] == b"\x89PNG\r\n\x1a\n":
+                        photo_bytes = r.content
+
             if not photo_bytes:
                 bot_instance.edit_message_text("❌ Vesika bulunamadı veya görsel yok.", msg.chat.id, sm.message_id)
                 return
-            # hak dus (admin haric basarili sonuc)
             if not vesika_use_query(uid):
                 bot_instance.edit_message_text("❌ Bakiye yetersiz.", msg.chat.id, sm.message_id)
                 return
-            import io
             buf = io.BytesIO(photo_bytes)
-            buf.name = f"vesika_{param}.jpg"
+            # uzanti
+            if photo_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+                buf.name = f"vesika_{param}.png"
+            else:
+                buf.name = f"vesika_{param}.jpg"
             cap = (
                 f"🪪 <b>VESİKA</b>\n"
                 f"🆔 TC: <code>{param}</code>\n"
                 f"💰 Kalan: <b>{vesika_get_balance(uid)}</b>\n"
-                f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+                f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+                f"🤖 @hackledin"
             )
             if caption_extra:
-                cap += "\n" + html.escape(caption_extra[:400])
+                cap += "\n" + html.escape(caption_extra[:350])
             bot_instance.send_photo(msg.chat.id, buf, caption=cap[:1024], parse_mode="HTML")
             try:
                 bot_instance.delete_message(msg.chat.id, sm.message_id)
@@ -11304,11 +11369,14 @@ def _process_turkey(msg, tool, bot_instance):
                 pass
         except Exception as e:
             print(f"[VESIKA] {e}")
+            import traceback
+            traceback.print_exc()
             try:
                 bot_instance.edit_message_text(f"❌ Hata: {e}", msg.chat.id, sm.message_id)
             except Exception:
                 pass
         return
+
 
     data, err = _api_get(url)
     if err:
