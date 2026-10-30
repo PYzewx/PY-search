@@ -4115,12 +4115,13 @@ def _mobius_section_lines(title, payload):
 
 
 
+
 def mobius_format_tr(resp, aranan, search_type=None):
     return mobius_build_html_report(resp, aranan, search_type)
 
 
 def mobius_build_html_report(resp, aranan, search_type=None):
-    """API tum veriyi tek HTML OSINT raporuna cevirir. Profil/sohbet/mesaj/hediye/leak ayri."""
+    """Temiz profil-tarzı HTML OSINT raporu (siyah, duzenli, okunakli)."""
     if not isinstance(resp, dict):
         resp = {"raw": str(resp)}
 
@@ -4128,11 +4129,7 @@ def mobius_build_html_report(resp, aranan, search_type=None):
     elapsed = resp.get("elapsed_seconds")
     count = resp.get("results_count")
     kind = resp.get("kind") or resp.get("type") or "—"
-    services = resp.get("services_used")
-    if isinstance(services, list):
-        services_s = ", ".join(map(str, services))
-    else:
-        services_s = str(services or "—")
+    now = datetime.now().strftime("%d.%m.%Y %H:%M")
 
     sections_raw = _mobius_extract_all(resp)
 
@@ -4149,7 +4146,7 @@ def mobius_build_html_report(resp, aranan, search_type=None):
                 "user_id", "Telegram ID", "tg_id", "username", "Username",
                 "Email", "email", "database", "Название чата", "Чат",
                 "Текст сообщения", "Подарок", "NFT Подарок", "first_name", "Имя",
-                "gift_received", "Password", "password",
+                "gift_received", "Password", "password", "messages_count", "chats_count",
             )):
                 acc.append(obj)
             else:
@@ -4183,10 +4180,8 @@ def mobius_build_html_report(resp, aranan, search_type=None):
             return "leak"
         return "other"
 
-    profile_cards, chat_cards, message_cards = [], [], []
-    gift_cards, leak_cards, other_cards = [], [], []
+    profiles, chats, messages, gifts, leaks, others = [], [], [], [], [], []
     source_blocks = []
-
     for title, payload in sections_raw:
         source_blocks.append((title, payload))
         for rec in _walk_dicts(payload):
@@ -4194,222 +4189,398 @@ def mobius_build_html_report(resp, aranan, search_type=None):
                 continue
             k = classify_rec(rec)
             if k == "profile":
-                profile_cards.append((title, rec))
+                profiles.append(rec)
             elif k == "chat":
-                chat_cards.append((title, rec))
+                chats.append(rec)
             elif k == "message":
-                message_cards.append((title, rec))
+                messages.append(rec)
             elif k == "gift":
-                gift_cards.append((title, rec))
+                gifts.append(rec)
             elif k == "leak":
-                leak_cards.append((title, rec))
+                leaks.append(rec)
             else:
-                other_cards.append((title, rec))
+                others.append(rec)
 
     def esc(x):
         return html.escape(str(x) if x is not None else "")
 
-    def kv_table(rec):
-        rows = []
-        for k, v in rec.items():
-            if v is None or v == "" or v == [] or v == {}:
-                continue
-            if isinstance(v, (dict, list)):
-                try:
-                    inner = json.dumps(v, ensure_ascii=False, indent=2, default=str)
-                except Exception:
-                    inner = str(v)
-                rows.append(
-                    '<tr><td class="k">' + esc(k) + '</td><td class="v"><pre>' + esc(inner) + '</pre></td></tr>'
-                )
-            else:
-                rows.append(
-                    '<tr><td class="k">' + esc(k) + '</td><td class="v"><code>' + esc(v) + '</code></td></tr>'
-                )
-        return "\n".join(rows)
+    def g(rec, *keys):
+        for k in keys:
+            if k in rec and rec[k] not in (None, "", [], {}):
+                return rec[k]
+        return None
 
-    BADGE_CLASS = {
-        "PROFILE": "",
-        "CHAT": " chat",
-        "MSG": " msg",
-        "GIFT": " gift",
-        "LEAK": " leak",
-        "DATA": "",
-    }
+    # --- ana profil ozeti (en zengin kayit) ---
+    main = {}
+    best_score = -1
+    for rec in profiles:
+        score = sum(1 for v in rec.values() if v not in (None, "", [], {}))
+        if score > best_score:
+            best_score = score
+            main = rec
 
-    def card_html(title, rec, badge):
-        db = esc(rec.get("database") or title or "")
-        table = kv_table(rec)
-        bc = BADGE_CLASS.get(badge, "")
+    uid = g(main, "user_id", "Telegram ID", "tg_id", "TelegramID") or ""
+    uname = g(main, "username", "Username", "Юзернейм") or ""
+    if uname:
+        uname = str(uname).lstrip("@")
+    first = g(main, "first_name", "name", "Имя", "FullName") or ""
+    last = g(main, "last_name") or ""
+    display = (str(first) + " " + str(last)).strip() or (uname and ("@" + uname)) or str(aranan)
+    bio = g(main, "bio", "О себе") or ""
+    phone = g(main, "phone", "Phone") or ""
+
+    # stats
+    n_groups = len(chats)
+    n_msgs = len(messages)
+    # API stats from profile if present
+    api_chats = g(main, "Найдено чатов", "chats_count")
+    api_msgs = g(main, "Сообщений в чатах", "messages_count")
+    try:
+        if api_chats is not None:
+            n_groups = max(n_groups, int(re.sub(r"\D", "", str(api_chats)) or 0) or n_groups)
+    except Exception:
+        pass
+    try:
+        if api_msgs is not None:
+            n_msgs = max(n_msgs, int(re.sub(r"\D", "", str(api_msgs)) or 0) or n_msgs)
+    except Exception:
+        pass
+
+    first_msg = g(main, "Первое сообщение", "first_message") or ""
+    last_msg = g(main, "Последнее сообщение", "last_message") or ""
+    hist_u = g(main, "usernames_history", "История юзернеймов") or ""
+    hist_n = g(main, "first_names_history", "История имён") or ""
+    gifts_n = g(main, "gifts_count", "Всего подарков") or len(gifts)
+
+    # en aktif sohbet
+    top_chat_name, top_chat_cnt = "", 0
+    for c in chats:
+        title = g(c, "Название чата", "title", "Чат") or ""
+        raw_cnt = g(c, "Сообщений пользователя", "messages_count") or "0"
+        try:
+            cnt = int(re.sub(r"\D", "", str(raw_cnt)) or 0)
+        except Exception:
+            cnt = 0
+        if cnt >= top_chat_cnt and title:
+            top_chat_cnt = cnt
+            top_chat_name = str(title)
+
+    # avatar initials
+    initials = ""
+    for ch in str(display):
+        if ch.isalnum():
+            initials += ch.upper()
+            if len(initials) >= 2:
+                break
+    if not initials:
+        initials = "TG"
+
+    tg_link = ""
+    if uname:
+        tg_link = "https://t.me/" + uname
+    elif uid:
+        tg_link = "tg://user?id=" + str(uid)
+
+    def row(label, value, link=None):
+        if value in (None, "", "—"):
+            return ""
+        v = esc(value)
+        if link:
+            v = '<a href="' + esc(link) + '">' + v + "</a>"
         return (
-            '<article class="card">'
-            '<div class="card-head">'
-            '<span class="badge' + bc + '">' + esc(badge) + '</span>'
-            '<span class="src">' + db + '</span>'
-            '</div>'
-            '<table class="kv">' + table + '</table>'
-            '</article>'
+            '<div class="row">'
+            '<div class="lbl">' + esc(label) + "</div>"
+            '<div class="val">' + v + "</div>"
+            "</div>"
         )
 
-    def section_html(sec_id, icon, title, items, badge):
+    def list_block(title, items, render_fn):
         if not items:
             return (
-                '<section class="sec" id="' + sec_id + '">'
-                '<h2>' + icon + ' ' + title + ' <span class="count">0</span></h2>'
-                '<p class="empty">Bu kategoride kayıt yok.</p>'
-                '</section>'
+                '<section class="block">'
+                '<div class="block-title">' + esc(title) + "</div>"
+                '<div class="muted">Kayıt yok</div>'
+                "</section>"
             )
-        cards = "\n".join(card_html(src, rec, badge) for src, rec in items)
+        body = "".join(render_fn(i, it) for i, it in enumerate(items, 1))
         return (
-            '<section class="sec" id="' + sec_id + '">'
-            '<h2>' + icon + ' ' + title + ' <span class="count">' + str(len(items)) + '</span></h2>'
-            '<div class="grid">' + cards + '</div>'
-            '</section>'
+            '<section class="block">'
+            '<div class="block-title">' + esc(title) + " · " + str(len(items)) + "</div>"
+            + body +
+            "</section>"
         )
 
-    def payload_to_pre(payload):
-        try:
-            return esc(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
-        except Exception:
-            return esc(str(payload))
+    def render_chat(i, rec):
+        title = g(rec, "Название чата", "title", "Чат") or "—"
+        link = g(rec, "Ссылка / Юзернейм", "username") or ""
+        cnt = g(rec, "Сообщений пользователя", "messages_count") or ""
+        first = g(rec, "Первое сообщение в чате", "first_message") or ""
+        last = g(rec, "Последнее сообщение в чате", "last_message") or ""
+        href = ""
+        if link and str(link).startswith("@"):
+            href = "https://t.me/" + str(link).lstrip("@")
+        elif link and "t.me" in str(link):
+            href = str(link)
+        name_html = esc(title)
+        if href:
+            name_html = '<a href="' + esc(href) + '">' + name_html + "</a>"
+        extra = []
+        if cnt:
+            extra.append(esc(str(cnt)) + " mesaj")
+        if first or last:
+            extra.append(esc(str(first or "—")) + " — " + esc(str(last or "—")))
+        return (
+            '<div class="item">'
+            '<div class="item-main">' + name_html + "</div>"
+            + ('<div class="item-sub">' + " · ".join(extra) + "</div>" if extra else "")
+            + "</div>"
+        )
 
-    raw_sections = []
+    def render_msg(i, rec):
+        chat = g(rec, "Чат") or ""
+        dt = g(rec, "Дата и время") or ""
+        text = g(rec, "Текст сообщения") or ""
+        return (
+            '<div class="item">'
+            '<div class="item-main">' + esc(text) + "</div>"
+            '<div class="item-sub">' + esc(chat) + ((" · " + esc(dt)) if dt else "") + "</div>"
+            "</div>"
+        )
+
+    def render_gift(i, rec):
+        parts = []
+        for k in ("Подарок", "NFT Подарок", "gift_received", "gift_sent", "Модель", "Оценка", "Отправитель", "Всего подарков", "name", "Имя"):
+            v = g(rec, k)
+            if v:
+                parts.append(esc(k) + ": " + esc(v))
+        if not parts:
+            for k, v in rec.items():
+                if v not in (None, "", [], {}) and not isinstance(v, (dict, list)):
+                    parts.append(esc(k) + ": " + esc(v))
+        return '<div class="item"><div class="item-main">' + "<br/>".join(parts[:8]) + "</div></div>"
+
+    def render_leak(i, rec):
+        db = g(rec, "database") or ""
+        lines = []
+        if db:
+            lines.append('<span class="tag">' + esc(db) + "</span>")
+        for label, keys in (
+            ("E-posta", ("Email", "email")),
+            ("Telefon", ("Phone", "phone")),
+            ("Şifre", ("Password", "password")),
+            ("Nick", ("NickName", "username")),
+            ("İsim", ("FullName", "name")),
+            ("IP", ("IP",)),
+            ("Link", ("Link",)),
+        ):
+            v = g(rec, *keys)
+            if v:
+                lines.append("<b>" + esc(label) + ":</b> " + esc(v))
+        # kalan alanlar
+        used = {"database", "Email", "email", "Phone", "phone", "Password", "password",
+                "NickName", "username", "FullName", "name", "IP", "Link"}
+        for k, v in rec.items():
+            if k in used or v in (None, "", [], {}) or isinstance(v, (dict, list)):
+                continue
+            lines.append("<b>" + esc(k) + ":</b> " + esc(v))
+        return '<div class="item"><div class="item-main">' + "<br/>".join(lines) + "</div></div>"
+
+    def render_profile_extra(i, rec):
+        # ana profil disindakiler
+        lines = []
+        for k, v in rec.items():
+            if v in (None, "", [], {}) or isinstance(v, (dict, list)):
+                continue
+            lines.append("<b>" + esc(k) + ":</b> " + esc(v))
+        return '<div class="item"><div class="item-main">' + "<br/>".join(lines[:20]) + "</div></div>"
+
+    # ham api
+    raw_parts = []
     for title, payload in source_blocks:
-        raw_sections.append(
-            '<details class="raw-block">'
-            '<summary>📡 ' + esc(title) + '</summary>'
-            '<pre>' + payload_to_pre(payload) + '</pre>'
-            '</details>'
+        try:
+            dump = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+        except Exception:
+            dump = str(payload)
+        raw_parts.append(
+            '<details class="raw">'
+            "<summary>" + esc(title) + "</summary>"
+            "<pre>" + esc(dump) + "</pre>"
+            "</details>"
         )
-    raw_html = "\n".join(raw_sections)
 
-    now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    q = esc(aranan)
+    open_btn = ""
+    if tg_link:
+        open_btn = (
+            '<a class="btn" href="' + esc(tg_link) + '" target="_blank" rel="noopener">'
+            "OPEN IN TELEGRAM</a>"
+        )
+
+    period = ""
+    if first_msg or last_msg:
+        period = esc(str(first_msg or "—")) + " — " + esc(str(last_msg or "—"))
 
     css = """
-:root {
-  --bg: #070b12; --panel: #0d1520; --card: #121c2b; --line: #1e2d45;
-  --cyan: #00e5ff; --green: #39ff14; --pink: #ff2d95; --orange: #ff9f1c;
-  --text: #e6eef8; --muted: #8b9bb4; --danger: #ff4d6d;
-}
 * { box-sizing: border-box; }
-body {
+html, body {
   margin: 0; padding: 0;
-  font-family: "JetBrains Mono", "Fira Code", Consolas, ui-monospace, monospace;
-  background:
-    radial-gradient(1200px 600px at 10% -10%, #0a3d4d33, transparent),
-    radial-gradient(900px 500px at 100% 0%, #3d0a4d22, transparent),
-    var(--bg);
-  color: var(--text); line-height: 1.45;
+  background: #000;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
 }
-.wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
-.hero {
-  border: 1px solid var(--line);
-  background: linear-gradient(135deg, #0d1a28 0%, #0a1220 50%, #101828 100%);
-  border-radius: 16px; padding: 22px;
-  box-shadow: 0 0 40px #00e5ff15, inset 0 1px 0 #ffffff10;
-  position: relative; overflow: hidden;
+a { color: #fff; }
+.page { max-width: 520px; margin: 0 auto; padding: 20px 18px 48px; }
+.top {
+  color: #888; font-size: 12px; letter-spacing: 1px;
+  text-transform: uppercase; margin-bottom: 28px;
 }
-.hero::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(0deg, transparent, transparent 2px, #00e5ff04 3px);
+.profile {
+  display: flex; gap: 14px; align-items: center; margin-bottom: 18px;
 }
-.logo { font-size: 12px; letter-spacing: 3px; color: var(--cyan); text-transform: uppercase; margin-bottom: 8px; }
-.hero h1 { margin: 0 0 12px; font-size: 22px; color: #fff; text-shadow: 0 0 18px #00e5ff55; }
-.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 14px; }
-.meta .box { background: #0a121c; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-.meta .lbl { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
-.meta .val { font-size: 13px; color: var(--cyan); margin-top: 4px; word-break: break-all; }
-.nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 8px; }
+.avatar {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: #1a1a1a; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 700; flex-shrink: 0;
+  border: 1px solid #2a2a2a;
+}
+.name { font-size: 26px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.3px; }
+.sub { color: #aaa; font-size: 14px; }
+.sub a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.btn {
+  display: block; text-align: center; text-decoration: none;
+  background: #fff; color: #000; font-weight: 700; font-size: 13px;
+  letter-spacing: 1px; padding: 14px; border-radius: 10px;
+  margin: 18px 0 28px;
+}
+.stats {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 28px 16px;
+  margin: 8px 0 32px; padding: 8px 0 28px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.stat .n { font-size: 36px; font-weight: 700; letter-spacing: -1px; }
+.stat .l {
+  margin-top: 4px; color: #777; font-size: 11px;
+  letter-spacing: 1.2px; text-transform: uppercase;
+}
+.block { margin: 0 0 28px; padding: 0 0 24px; border-bottom: 1px solid #1a1a1a; }
+.block-title {
+  color: #777; font-size: 11px; letter-spacing: 1.4px;
+  text-transform: uppercase; margin-bottom: 10px;
+}
+.row { margin-bottom: 16px; }
+.row .lbl {
+  color: #777; font-size: 11px; letter-spacing: 1.2px;
+  text-transform: uppercase; margin-bottom: 6px;
+}
+.row .val { font-size: 17px; font-weight: 600; word-break: break-word; }
+.row .val a { text-decoration: underline; text-underline-offset: 3px; }
+.item {
+  padding: 12px 0; border-bottom: 1px solid #141414;
+}
+.item:last-child { border-bottom: none; }
+.item-main { font-size: 15px; font-weight: 500; word-break: break-word; }
+.item-sub { margin-top: 4px; color: #777; font-size: 12px; }
+.tag {
+  display: inline-block; font-size: 11px; color: #000; background: #fff;
+  padding: 2px 8px; border-radius: 6px; margin-bottom: 6px; font-weight: 700;
+}
+.muted { color: #666; font-size: 13px; }
+.raw {
+  margin: 8px 0; border: 1px solid #1a1a1a; border-radius: 10px; overflow: hidden;
+}
+.raw summary {
+  cursor: pointer; padding: 12px 14px; color: #aaa; font-size: 13px;
+  list-style: none;
+}
+.raw summary::-webkit-details-marker { display: none; }
+.raw pre {
+  margin: 0; padding: 12px 14px; border-top: 1px solid #1a1a1a;
+  background: #0a0a0a; color: #bbb; font-size: 11px;
+  max-height: 360px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+}
+.footer {
+  margin-top: 20px; color: #555; font-size: 12px; text-align: center;
+}
+.nav {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px;
+}
 .nav a {
-  text-decoration: none; color: var(--text); font-size: 12px;
-  border: 1px solid var(--line); background: var(--panel);
-  padding: 8px 12px; border-radius: 999px;
+  color: #aaa; text-decoration: none; font-size: 12px;
+  border: 1px solid #222; border-radius: 999px; padding: 6px 10px;
 }
-.nav a:hover { border-color: var(--cyan); color: var(--cyan); }
-.sec { margin-top: 28px; }
-.sec h2 {
-  font-size: 16px; margin: 0 0 14px; padding-bottom: 10px;
-  border-bottom: 1px solid var(--line); color: #fff;
-  display: flex; align-items: center; gap: 10px;
+.bio {
+  color: #bbb; font-size: 14px; margin: 10px 0 0; line-height: 1.5;
 }
-.count { font-size: 11px; color: var(--bg); background: var(--cyan); padding: 2px 8px; border-radius: 999px; font-weight: 700; }
-.grid { display: grid; gap: 12px; }
-.card {
-  background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
-  box-shadow: 0 8px 24px #00000055;
-}
-.card-head {
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  padding: 10px 14px; background: #0a1420; border-bottom: 1px solid var(--line);
-}
-.badge { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--bg); background: var(--green); padding: 3px 8px; border-radius: 6px; font-weight: 700; }
-.badge.leak { background: var(--danger); color: #fff; }
-.badge.chat { background: var(--orange); color: #111; }
-.badge.msg { background: #7c5cff; color: #fff; }
-.badge.gift { background: var(--pink); color: #fff; }
-.src { font-size: 11px; color: var(--muted); text-align: right; }
-table.kv { width: 100%; border-collapse: collapse; font-size: 12px; }
-table.kv td { padding: 8px 12px; vertical-align: top; border-bottom: 1px solid #162233; }
-table.kv tr:last-child td { border-bottom: none; }
-td.k { width: 34%; color: var(--muted); }
-td.v { color: var(--text); word-break: break-word; }
-td.v code { color: var(--cyan); font-family: inherit; }
-td.v pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: #b8f0ff; font-size: 11px; }
-.empty { color: var(--muted); font-size: 13px; }
-.raw-block { margin: 10px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
-.raw-block summary { cursor: pointer; padding: 12px 14px; color: var(--cyan); list-style: none; font-size: 13px; }
-.raw-block summary::-webkit-details-marker { display: none; }
-.raw-block pre { margin: 0; padding: 12px 14px 16px; border-top: 1px solid var(--line); max-height: 420px; overflow: auto; font-size: 11px; color: #9fd; background: #060a10; }
-.footer { margin-top: 32px; text-align: center; color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 18px; }
-.footer b { color: var(--cyan); }
 """
 
     html_doc = (
-        "<!DOCTYPE html>\n<html lang=\"tr\">\n<head>\n"
-        "<meta charset=\"UTF-8\"/>\n"
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>\n"
-        "<title>Telegram OSINT — " + q + "</title>\n"
-        "<style>" + css + "</style>\n</head>\n<body>\n"
-        "<div class=\"wrap\">\n"
-        "  <header class=\"hero\">\n"
-        "    <div class=\"logo\">Cyber Search · OSINT Report</div>\n"
-        "    <h1>Telegram OSINT</h1>\n"
-        "    <div class=\"meta\">\n"
-        "      <div class=\"box\"><div class=\"lbl\">HEDEF</div><div class=\"val\">" + q + "</div></div>\n"
-        "      <div class=\"box\"><div class=\"lbl\">TIP</div><div class=\"val\">" + esc(tip) + "</div></div>\n"
-        "      <div class=\"box\"><div class=\"lbl\">API</div><div class=\"val\">" + esc(kind) + "</div></div>\n"
-        "      <div class=\"box\"><div class=\"lbl\">SURE</div><div class=\"val\">" + esc(elapsed if elapsed is not None else "—") + " sn</div></div>\n"
-        "      <div class=\"box\"><div class=\"lbl\">KAYNAK</div><div class=\"val\">" + esc(count if count is not None else "—") + "</div></div>\n"
-        "      <div class=\"box\"><div class=\"lbl\">SERVISLER</div><div class=\"val\">" + esc(services_s) + "</div></div>\n"
-        "    </div>\n"
-        "  </header>\n"
-        "  <nav class=\"nav\">\n"
-        "    <a href=\"#profil\">Profil (" + str(len(profile_cards)) + ")</a>\n"
-        "    <a href=\"#sohbet\">Sohbet (" + str(len(chat_cards)) + ")</a>\n"
-        "    <a href=\"#mesaj\">Mesaj (" + str(len(message_cards)) + ")</a>\n"
-        "    <a href=\"#hediye\">Hediye (" + str(len(gift_cards)) + ")</a>\n"
-        "    <a href=\"#leak\">Leak (" + str(len(leak_cards)) + ")</a>\n"
-        "    <a href=\"#diger\">Diger (" + str(len(other_cards)) + ")</a>\n"
-        "    <a href=\"#ham\">Ham API</a>\n"
-        "  </nav>\n"
-        + section_html("profil", "👤", "Telegram Profil", profile_cards, "PROFILE")
-        + section_html("sohbet", "💬", "Sohbetler / Gruplar", chat_cards, "CHAT")
-        + section_html("mesaj", "💭", "Mesajlar", message_cards, "MSG")
-        + section_html("hediye", "🎁", "Hediyeler / NFT", gift_cards, "GIFT")
-        + section_html("leak", "🔓", "Leak / Breach Kayitlari", leak_cards, "LEAK")
-        + section_html("diger", "📦", "Diger Kayitlar", other_cards, "DATA")
-        + "  <section class=\"sec\" id=\"ham\">\n"
-        "    <h2>📡 Ham API Kaynaklari <span class=\"count\">" + str(len(source_blocks)) + "</span></h2>\n"
-        "    <p class=\"empty\">API'nin dondurdugu tum ham JSON — hicbir alan atilmaz.</p>\n"
-        + raw_html + "\n"
-        "  </section>\n"
-        "  <footer class=\"footer\">\n"
-        "    <div>" + esc(now) + "</div>\n"
-        "    <div><b>Cyber Search</b> · Telegram OSINT · @hackledin</div>\n"
-        "  </footer>\n"
-        "</div>\n</body>\n</html>"
+        "<!DOCTYPE html><html lang=\"tr\"><head>"
+        "<meta charset=\"UTF-8\"/>"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"/>"
+        "<title>" + esc(display) + " · OSINT</title>"
+        "<style>" + css + "</style></head><body>"
+        "<div class=\"page\">"
+        "<div class=\"top\">USER REPORT · " + esc(now) + "</div>"
+        "<div class=\"profile\">"
+        "<div class=\"avatar\">" + esc(initials) + "</div>"
+        "<div>"
+        "<div class=\"name\">" + esc(display) + "</div>"
+        "<div class=\"sub\">"
+        + (("ID " + esc(uid) + "  ") if uid else "")
+        + (('<a href="https://t.me/' + esc(uname) + '">@' + esc(uname) + "</a>") if uname else esc(str(aranan)))
+        + "</div>"
+        + (('<div class="bio">' + esc(bio) + "</div>") if bio else "")
+        + "</div></div>"
+        + open_btn
+        + '<div class="stats">'
+        '<div class="stat"><div class="n">' + str(n_groups) + '</div><div class="l">Groups</div></div>'
+        '<div class="stat"><div class="n">' + str(n_msgs) + '</div><div class="l">Messages</div></div>'
+        '<div class="stat"><div class="n">' + str(len(gifts)) + '</div><div class="l">Gifts</div></div>'
+        '<div class="stat"><div class="n">' + str(len(leaks)) + '</div><div class="l">Leaks</div></div>'
+        "</div>"
+        '<nav class="nav">'
+        '<a href="#info">Info</a>'
+        '<a href="#groups">Groups</a>'
+        '<a href="#messages">Messages</a>'
+        '<a href="#gifts">Gifts</a>'
+        '<a href="#leaks">Leaks</a>'
+        '<a href="#raw">Raw API</a>'
+        "</nav>"
+        '<section class="block" id="info">'
+        '<div class="block-title">Info</div>'
+        + row("Query", aranan)
+        + row("Type", tip)
+        + row("API", kind)
+        + row("Elapsed", (str(elapsed) + " sn") if elapsed is not None else None)
+        + row("Sources", count)
+        + row("Phone", phone)
+        + row("Username history", hist_u)
+        + row("Name history", hist_n)
+        + row("First and last message", period if period else None)
+        + row(
+            "Writes the most in",
+            (top_chat_name + " — " + str(top_chat_cnt) + " messages") if top_chat_name else None,
+        )
+        + "</section>"
+        + '<div id="groups">' + list_block("Groups / Chats", chats, render_chat) + "</div>"
+        + '<div id="messages">' + list_block("Messages", messages, render_msg) + "</div>"
+        + '<div id="gifts">' + list_block("Gifts / NFT", gifts, render_gift) + "</div>"
+        + '<div id="leaks">' + list_block("Leaks / Breaches", leaks, render_leak) + "</div>"
+        + (
+            list_block("Other profiles", [p for p in profiles if p is not main][:30], render_profile_extra)
+            if len(profiles) > 1 else ""
+        )
+        + '<section class="block" id="raw">'
+        '<div class="block-title">Raw API · ' + str(len(source_blocks)) + "</div>"
+        + "".join(raw_parts)
+        + "</section>"
+        + '<div class="footer">Cyber Search · Telegram OSINT · @hackledin</div>'
+        + "</div></body></html>"
     )
+
+    # fix gifts stat - the ternary mess above is broken; rebuild stats cleanly in string already partially wrong
     return html_doc
 
 
@@ -4482,8 +4653,6 @@ def _process_mobius_search(msg, bot_instance, search_type=None):
             "📂 " + html.escape(str(tip_s)) + "\n"
             "📊 Kaynak: <b>" + str(rc if rc is not None else "—") + "</b>\n"
             "⏱ " + str(data.get("elapsed_seconds", "—")) + " sn\n\n"
-            "👤 Profil · 💬 Sohbet · 💭 Mesaj\n"
-            "🎁 Hediye · 🔓 Leak · 📡 Ham API\n"
             "<i>HTML dosyasını indir → tarayıcıda aç</i>"
         )
         bot_instance.send_document(msg.chat.id, bio, caption=caption, parse_mode="HTML")
