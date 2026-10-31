@@ -127,7 +127,7 @@ VESIKA_PRICE_30 = 449
 
 # ── Mobius Search OSINT ──
 MOBIUS_BASE_URL = "https://mobiusnet.cc.cd"
-MOBIUS_API_KEY = os.getenv("MOBIUS_API_KEY", "MOBIUS-IO-Pnnja-vHPMYpvgzyZg7D2mnTsswbkXkBLhLQvyq4vlY").strip()
+MOBIUS_API_KEY = os.getenv("MOBIUS_API_KEY", "MOBIUS-IO-lJry0SWNhp3IEy13SjjBMFns-7T7S2OiYsd28qGb-xs").strip()
 MOBIUS_MIN_INTERVAL = 2.0
 MOBIUS_FREE_LIMIT = 1
 MOBIUS_PACKAGE_15 = 15
