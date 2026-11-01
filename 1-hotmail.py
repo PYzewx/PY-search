@@ -127,7 +127,7 @@ VESIKA_PRICE_30 = 449
 
 # ── Mobius Search OSINT ──
 MOBIUS_BASE_URL = "https://mobiusnet.cc.cd"
-MOBIUS_API_KEY = os.getenv("MOBIUS_API_KEY", "MOBIUS-IO-lJry0SWNhp3IEy13SjjBMFns-7T7S2OiYsd28qGb-xs").strip()
+MOBIUS_API_KEY = os.getenv("MOBIUS_API_KEY", "MOBIUS-IO-ha4DYfb54q7TeqwyOlRzz0ovkg-8c-ex8gdJ0aP0CRY").strip()
 MOBIUS_MIN_INTERVAL = 2.0
 MOBIUS_FREE_LIMIT = 1
 MOBIUS_PACKAGE_15 = 15
@@ -3941,30 +3941,59 @@ def mobius_search(query, search_type=None):
     return mobius_api_request("/api/v1/search", method="POST", json_body=body)
 
 def mobius_type_kb():
+    """14 servis — hepsi HTML rapor üretir."""
     mk = InlineKeyboardMarkup(row_width=2)
     mk.add(
-        _btn("🤖 Auto", "mobius_t_auto", "primary"),
-        _btn("📱 Telefon", "mobius_t_phone", "primary"),
-        _btn("✈️ Telegram", "mobius_t_tg", "success"),
-        _btn("📘 VK", "mobius_t_vk", "primary"),
-        _btn("👤 FIO / İsim", "mobius_t_fio", "success"),
+        _btn("🕵️ Kişisel Bilgiler", "mobius_t_fio", "success"),
+        _btn("📲 Telefon", "mobius_t_phone", "primary"),
         _btn("📧 E-posta", "mobius_t_email", "primary"),
-        _btn("🧾 INN", "mobius_t_inn", "primary"),
-        _btn("🛂 Pasaport", "mobius_t_passport", "success"),
+        _btn("🚘 Araç", "mobius_t_auto", "primary"),
+        _btn("💬 VKontakte", "mobius_t_vk", "success"),
+        _btn("🎵 TikTok/IG/OK", "mobius_t_social", "primary"),
+        _btn("📟 Telegram", "mobius_t_tg", "success"),
+        _btn("📄 Pasaport", "mobius_t_passport", "primary"),
+        _btn("📄 Sürücü/SNILS", "mobius_t_docs", "primary"),
+        _btn("📄 INN", "mobius_t_inn", "primary"),
+        _btn("🌐 Domain/IP", "mobius_t_net", "success"),
+        _btn("🏚 Gayrimenkul", "mobius_t_realty", "primary"),
+        _btn("🏢 Tüzel kişi", "mobius_t_company", "primary"),
+        _btn("🔍 Otomatik", "mobius_t_auto", "success"),
     )
     mk.add(_btn("◀️ Geri", "tool_mobius", "danger"))
     return mk
 
 _MOBIUS_TYPE_LABEL = {
-    None: "Auto",
-    "auto": "Auto",
+    None: "Otomatik",
+    "auto": "Otomatik / Araç",
     "phone": "Telefon",
     "tg": "Telegram",
-    "vk": "VK",
-    "fio": "FIO / İsim",
+    "vk": "VKontakte",
+    "fio": "Kişisel Bilgiler",
     "email": "E-posta",
     "inn": "INN",
     "passport": "Pasaport",
+    "social": "TikTok / Instagram / OK",
+    "docs": "Sürücü / SNILS",
+    "net": "Domain / IP / tag",
+    "realty": "Gayrimenkul",
+    "company": "Tüzel kişi",
+}
+
+# API'ye giden type (desteklenmeyenler auto)
+_MOBIUS_API_TYPE = {
+    "auto": "auto",
+    "phone": "phone",
+    "tg": "tg",
+    "vk": "vk",
+    "fio": "fio",
+    "email": "email",
+    "inn": "inn",
+    "passport": "passport",
+    "social": "auto",
+    "docs": "auto",
+    "net": "auto",
+    "realty": "auto",
+    "company": "auto",
 }
 
 def _mq(s, n=500):
@@ -4744,7 +4773,7 @@ def mobius_build_html_report(resp, aranan, search_type=None):
         "<!doctype html><html lang='tr'><head>"
         "<meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        "<title>Cyber Search — " + esc(display) + "</title>"
+        "<title>Cyber Search OSINT — " + esc(tip) + " — " + esc(display) + "</title>"
         "<style>" + CSS + "</style></head><body>"
         "<header class='top'><div class='wrap'>"
         "<span class='brand'><span class='word'>Cyber Search</span></span>"
@@ -4796,11 +4825,14 @@ def _process_mobius_search(msg, bot_instance, search_type=None):
     if not allowed:
         bot_instance.reply_to(msg, mobius_no_balance_text(uid), reply_markup=mobius_packages_kb(), parse_mode="HTML")
         return
-    st = search_type if search_type not in (None, "auto") else None
-    tip = _MOBIUS_TYPE_LABEL.get(search_type or "auto", "Auto")
+    api_map = globals().get("_MOBIUS_API_TYPE") or {}
+    raw_type = search_type or "auto"
+    mapped = api_map.get(raw_type, raw_type)
+    st = mapped if mapped not in (None, "auto") else None
+    tip = _MOBIUS_TYPE_LABEL.get(raw_type, "Otomatik")
     wait = bot_instance.reply_to(
         msg,
-        "⏳ <b>OSINT taranıyor...</b>\n"
+        "⏳ <b>Cyber Search OSINT taranıyor...</b>\n"
         "🎯 <code>" + html.escape(query) + "</code>\n"
         "📂 Tip: <b>" + html.escape(tip) + "</b>\n"
         "<i>HTML rapor hazırlanacak</i>",
@@ -8965,12 +8997,14 @@ def register_handlers(bot_instance):
                     )
                     return
                 txt = (
-                    "🔍 <b>TELEGRAM OSINT</b>\n"
+                    "🔍 <b>Cyber Search OSINT</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n"
-                    "Hangi sorgu tipini kullanmak istersin?\n\n"
-                    "🤖 Auto — otomatik algıla\n"
-                    "📱 Telefon · ✈️ Telegram · 📘 VK\n"
-                    "👤 İsim · 📧 E-posta · 🧾 INN · 🛂 Pasaport"
+                    "Servis seç — sonuç <b>HTML rapor</b> olarak gelir.\n\n"
+                    "🕵️ Kişisel · 📲 Telefon · 📧 E-posta\n"
+                    "🚘 Araç · 💬 VK · 🎵 Sosyal\n"
+                    "📟 Telegram · 📄 Pasaport / SNILS / INN\n"
+                    "🌐 Domain/IP · 🏚 Gayrimenkul · 🏢 Tüzel\n"
+                    "🔍 Otomatik"
                 )
                 try:
                     bot_instance.edit_message_text(
