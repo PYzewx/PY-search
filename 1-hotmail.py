@@ -4494,14 +4494,477 @@ def _mobius_normalize(resp):
     }
 
 def mobius_build_html_report(resp, aranan, search_type=None):
-    """Telescan tarzı HTML — Türkçe kart listeleri, temiz veri."""
+    """14 servis → 14 HTML şablon. Telegram ayrı; diğerleri servise özel + tam veri."""
+    st = (search_type or "auto").lower().strip()
+    if st in ("tg", "telegram"):
+        return _mobius_html_telegram(resp, aranan, search_type)
+    # Servise özel şablonlar (hepsi kısıtlamasız tam veri içerir)
+    builders = {
+        "fio": _mobius_html_svc_fio,
+        "phone": _mobius_html_svc_phone,
+        "email": _mobius_html_svc_email,
+        "vk": _mobius_html_svc_vk,
+        "passport": _mobius_html_svc_passport,
+        "inn": _mobius_html_svc_inn,
+        "social": _mobius_html_svc_social,
+        "docs": _mobius_html_svc_docs,
+        "net": _mobius_html_svc_net,
+        "realty": _mobius_html_svc_realty,
+        "company": _mobius_html_svc_company,
+        "auto": _mobius_html_svc_auto,
+    }
+    fn = builders.get(st, _mobius_html_svc_auto)
+    return fn(resp, aranan, search_type)
+
+
+def _mobius_collect_flat(resp):
+    """API'deki TÜM kayıtlar — kısıtlama yok."""
+    out = []
+
+    def add(src, item):
+        if item is None:
+            return
+        out.append((str(src), item))
+
+    if not isinstance(resp, dict):
+        add("raw", resp)
+        return out
+
+    groups = resp.get("groups")
+    if isinstance(groups, dict) and groups:
+        for gname, gdata in groups.items():
+            if isinstance(gdata, dict):
+                recs = gdata.get("records")
+                if isinstance(recs, list) and recs:
+                    for r in recs:
+                        add(gname, r)
+                else:
+                    add(gname, gdata)
+            else:
+                add(gname, gdata)
+        if out:
+            return out
+
+    results = resp.get("results")
+    if isinstance(results, dict):
+        for source, sdata in results.items():
+            if not isinstance(sdata, dict):
+                add(source, sdata)
+                continue
+            inner = sdata.get("result")
+            if not isinstance(inner, dict):
+                add(source, sdata)
+                continue
+            data = inner.get("data")
+            if not isinstance(data, dict):
+                add(source, inner)
+                continue
+            ir = data.get("results")
+            if isinstance(ir, dict):
+                for key, items in ir.items():
+                    src = f"{source} · {key}" if key else source
+                    if isinstance(items, list):
+                        for it in items:
+                            add(src, it)
+                    elif items is not None:
+                        add(src, items)
+            elif isinstance(ir, list):
+                for it in ir:
+                    add(source, it)
+            else:
+                extra = {
+                    k: v for k, v in data.items()
+                    if k not in ("results", "results_count", "services_found", "count")
+                }
+                add(source, extra if extra else inner)
+        if out:
+            return out
+
+    for k, v in resp.items():
+        if k in ("query", "kind", "results_count", "elapsed_seconds", "search_id",
+                 "report_url", "services_used", "results", "groups"):
+            continue
+        add(k, v)
+    return out
+
+
+def _mobius_classify_html(src, rec):
+    s = (src or "").lower()
+    if not isinstance(rec, dict):
+        return "Diğer"
+    keys = {str(k).lower() for k in rec.keys()}
+    db = str(rec.get("database") or rec.get("db") or rec.get("source") or "").lower()
+    blob = s + " " + db
+    if any(x in blob for x in ("gift", "подар", "hediye", "telegram-gifts")) and "password" not in keys:
+        return "Hediyeler"
+    if any(x in db for x in ("sohbet mesaj", "сообщения", "messages in chat")):
+        return "Mesajlar"
+    if any(x in keys for x in ("text", "message", "mesaj metni", "текст сообщения")) and any(
+        x in keys for x in ("timestamp", "date", "tarih", "chat", "title")
+    ):
+        return "Mesajlar"
+    if any(x in db for x in ("sohbetler", "чаты", "chats and")):
+        return "Sohbetler"
+    if any(x in keys for x in ("chat_title", "sohbet adı", "chat_id", "название чата")):
+        return "Sohbetler"
+    leak_w = (
+        "canva", "twitter", "facebook", "rockyou", "steam", "breach", "утеч",
+        "collection", "deezer", "myspace", "imesh", "moonmc", "leak", "password",
+        "nvi", "peopledata", "wattpad", "linkedin",
+    )
+    if any(x in blob for x in leak_w) or any("password" in k for k in keys):
+        return "Sızıntılar"
+    if "database" in keys and any(x in keys for x in ("email", "hash", "password")):
+        return "Sızıntılar"
+    if any(x in blob for x in ("profile", "profil", "activity", "aktivite")):
+        return "Profil"
+    if any(x in keys for x in ("username", "first_name", "user_id", "telegram_id", "bio", "full_name", "name")):
+        return "Profil"
+    return "Diğer"
+
+
+_MOBIUS_FIELD_TR = {
+    "phone": "Telefon", "email": "E-posta", "username": "Kullanıcı adı",
+    "first_name": "Ad", "last_name": "Soyad", "full_name": "Tam ad", "name": "Ad",
+    "user_id": "Kullanıcı ID", "telegram_id": "Telegram ID", "id": "ID",
+    "database": "Veritabanı", "password": "Şifre", "hash": "Hash",
+    "ip": "IP", "address": "Adres", "city": "Şehir", "country": "Ülke",
+    "region": "Bölge", "birth_date": "Doğum tarihi", "birthday": "Doğum günü",
+    "gender": "Cinsiyet", "bio": "Biyografi", "url": "Bağlantı", "link": "Bağlantı",
+    "inn": "INN", "snils": "SNILS", "passport": "Pasaport", "ogrn": "OGRN",
+    "company": "Şirket", "organization": "Kuruluş", "title": "Başlık",
+    "text": "Metin", "message": "Mesaj", "timestamp": "Tarih", "date": "Tarih",
+    "reg_date": "Kayıt", "created": "Oluşturulma", "updated": "Güncelleme",
+    "followers": "Takipçiler", "vk_id": "VK ID", "facebook_id": "Facebook ID",
+    "steam_id": "Steam ID", "uid": "UID", "dob": "Doğum tarihi",
+    "father_name": "Baba adı", "mother_name": "Anne adı", "district": "İlçe",
+    "plate": "Plaka", "vin": "VIN", "brand": "Marka", "model": "Model",
+    "domain": "Alan adı", "carrier": "Operatör", "operator": "Operatör",
+    "имя": "Ad", "фамилия": "Soyad", "телефон": "Telefon", "почта": "E-posta",
+    "адрес": "Adres", "город": "Şehir", "страна": "Ülke", "база": "Veritabanı",
+    "пароль": "Şifre", "данные": "Veri",
+}
+
+
+def _mobius_tr_key(k):
+    key = str(k).lower().strip()
+    return _MOBIUS_FIELD_TR.get(key, str(k))
+
+
+def _mobius_render_value(v):
+    """Değer HTML — metin KESİLMEZ."""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return "Evet" if v else "Hayır"
+    if isinstance(v, (int, float)):
+        return html.escape(str(v))
+    if isinstance(v, str):
+        return html.escape(v)
+    if isinstance(v, list):
+        if not v:
+            return "<span class='muted'>(boş)</span>"
+        if all(not isinstance(x, (dict, list)) for x in v):
+            return html.escape(", ".join(str(x) for x in v))
+        parts = []
+        for i, item in enumerate(v, 1):
+            parts.append(
+                "<div class='sub'><span class='src-tag'>#" + str(i) + "</span>"
+                + _mobius_render_value(item) + "</div>"
+            )
+        return "".join(parts)
+    if isinstance(v, dict):
+        rows = []
+        for k, val in v.items():
+            if val is None or val == "":
+                continue
+            if isinstance(val, (list, dict)) and not val:
+                continue
+            label = html.escape(_mobius_tr_key(k))
+            if isinstance(val, (dict, list)):
+                rows.append(
+                    "<div class='kv'><span class='k'>" + label + "</span>"
+                    "<div class='vv'>" + _mobius_render_value(val) + "</div></div>"
+                )
+            else:
+                rows.append(
+                    "<div class='kv'><span class='k'>" + label + "</span>"
+                    "<span class='vv'>" + html.escape(str(val)) + "</span></div>"
+                )
+        return "".join(rows)
+    return html.escape(str(v))
+
+
+def _mobius_raw_parts(resp):
+    parts = []
+    for title, payload in _mobius_extract_all(resp):
+        try:
+            dump = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+        except Exception:
+            dump = str(payload)
+        parts.append(
+            "<details class='raw'><summary>" + html.escape(str(title)) + "</summary>"
+            "<pre style='white-space:pre-wrap;word-break:break-word;font-size:12px;"
+            "max-height:none;overflow:auto;margin:0;padding:12px;border-top:1px solid var(--line)'>"
+            + html.escape(dump) + "</pre></details>"
+        )
+    return parts
+
+
+def _mobius_html_shell(title_svc, aranan, tip, kind, elapsed, count, records, buckets, raw_parts, accent_label, focus_html=""):
+    """Ortak kabuk — her servis kendi accent + focus ile çağırır."""
+    CSS, JS = _mobius_css_js()
+    now = datetime.now().strftime("%d.%m.%Y %H:%M")
+    order = ["Profil", "Sohbetler", "Mesajlar", "Hediyeler", "Sızıntılar", "Diğer"]
+
+    def esc(x):
+        return html.escape(str(x) if x is not None else "")
+
+    def card(src, rec, idx):
+        body = _mobius_render_value(rec) if isinstance(rec, (dict, list)) else esc(rec)
+        return (
+            "<div class='card-row'>"
+            "<div class='src-tag'>#" + str(idx) + " · " + esc(src) + "</div>"
+            + body + "</div>"
+        )
+
+    def sect(sid, title, items):
+        if not items:
+            return ""
+        body = "".join(card(src, rec, i) for i, (src, rec) in enumerate(items, 1))
+        return (
+            "<details class='sect' id='" + sid + "' open>"
+            "<summary class='head'><i class='chev'></i> " + esc(title)
+            + " <span class='n'>" + str(len(items)) + "</span></summary>"
+            "<div class='fold'><div class='card-list'>" + body + "</div></div></details>"
+        )
+
+    sections = "".join(sect(k.lower(), k, buckets.get(k) or []) for k in order)
+    sections += (
+        "<details class='sect' id='raw' open>"
+        "<summary class='head'><i class='chev'></i> Ham API kaynakları"
+        " <span class='n'>" + str(len(raw_parts)) + "</span></summary>"
+        "<div class='fold'>" + "".join(raw_parts) + "</div></details>"
+    )
+
+    toc = []
+    for k in order:
+        if buckets.get(k):
+            toc.append(
+                "<a href='#" + k.lower() + "'><span>" + k + "</span><b>"
+                + str(len(buckets[k])) + "</b></a>"
+            )
+    toc.append("<a href='#raw'><span>Ham API</span><b>" + str(len(raw_parts)) + "</b></a>")
+
+    tiles = "".join(
+        "<div class='tile'><span class='n'>" + str(len(buckets[k])) + "</span>"
+        "<span class='l caps'>" + k + "</span></div>"
+        for k in order if buckets.get(k)
+    )
+
+    facts = (
+        "<div class='fact'><span class='l caps'>Sorgu</span><span class='v'>" + esc(aranan) + "</span></div>"
+        "<div class='fact'><span class='l caps'>Servis</span><span class='v'>" + esc(tip) + "</span></div>"
+        "<div class='fact'><span class='l caps'>Şablon</span><span class='v'>" + esc(accent_label) + "</span></div>"
+        "<div class='fact'><span class='l caps'>API tür</span><span class='v'>" + esc(kind) + "</span></div>"
+        + (("<div class='fact'><span class='l caps'>Süre</span><span class='v'>" + esc(elapsed) + " sn</span></div>") if elapsed is not None else "")
+        + (("<div class='fact'><span class='l caps'>API kayıt</span><span class='v'>" + esc(count) + "</span></div>") if count is not None else "")
+        + "<div class='fact'><span class='l caps'>Listelenen</span><span class='v'>" + str(len(records)) + "</span></div>"
+    )
+
+    extra_css = (
+        ".kv{display:grid;grid-template-columns:minmax(120px,220px) 1fr;gap:4px 16px;"
+        "padding:4px 0;border-bottom:1px solid var(--line)}"
+        ".kv .k{color:var(--fg-2);font-size:13px;font-weight:500}"
+        ".kv .vv{color:var(--fg);font-size:14px;overflow-wrap:anywhere;white-space:pre-wrap}"
+        ".sub{margin:8px 0 8px 8px;padding-left:10px;border-left:2px solid var(--line)}"
+        ".card-row .kv:last-child{border-bottom:none}"
+        ".svc-badge{display:inline-block;margin-top:10px;padding:6px 12px;border:1px solid var(--line);"
+        "font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-2)}"
+        ".focus-box{margin-top:28px;padding:20px;border:1px solid var(--line)}"
+        ".focus-box h2{margin:0 0 12px;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-2)}"
+    )
+
+    return (
+        "<!doctype html><html lang='tr'><head>"
+        "<meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>Cyber Search — " + esc(title_svc) + " — " + esc(aranan) + "</title>"
+        "<style>" + CSS + extra_css + "</style></head><body>"
+        "<header class='top'><div class='wrap'>"
+        "<span class='brand'><span class='word'>Cyber Search</span></span>"
+        "<input class='find' id='q' type='search' placeholder='Raporda ara' autocomplete='off' spellcheck='false'>"
+        "<button class='theme' id='theme' type='button'>Tema</button>"
+        "</div></header>"
+        "<div class='wrap page'>"
+        "<p class='caps kicker'>" + esc(title_svc) + " · " + esc(now) + "</p>"
+        "<section class='hero'>"
+        "<div class='who'><div class='names'><h1>" + esc(aranan) + "</h1>"
+        "<div class='svc-badge'>" + esc(accent_label) + "</div></div></div>"
+        + (focus_html or "")
+        + "<div class='tiles'>" + tiles + "</div>"
+        + "<div class='facts'>" + facts + "</div>"
+        + "</section>"
+        + "<nav class='index'><div class='strip'>" + "".join(toc) + "</div></nav>"
+        + "<main>" + sections + "</main>"
+        + "<p class='caps' style='margin-top:40px;text-align:center'>Cyber Search · "
+        + esc(title_svc) + " · @hackledin · kısıtlama yok</p>"
+        + "</div><script>" + JS + "</script></body></html>"
+    )
+
+
+def _mobius_svc_base(resp, aranan, search_type, title_svc, accent_label, focus_keys=None):
+    """Servis şablonları için ortak hazırlık + isteğe bağlı öne çıkan alanlar."""
     if not isinstance(resp, dict):
         resp = {"raw": str(resp)}
-
-    tip = _MOBIUS_TYPE_LABEL.get(search_type, search_type or "Auto")
+    tip = _MOBIUS_TYPE_LABEL.get(search_type, search_type or title_svc)
     elapsed = resp.get("elapsed_seconds")
     count = resp.get("results_count")
     kind = resp.get("kind") or resp.get("type") or "—"
+    records = _mobius_collect_flat(resp)
+    order = ["Profil", "Sohbetler", "Mesajlar", "Hediyeler", "Sızıntılar", "Diğer"]
+    buckets = {k: [] for k in order}
+    for src, rec in records:
+        buckets[_mobius_classify_html(src, rec)].append((src, rec))
+    raw_parts = _mobius_raw_parts(resp)
+
+    focus_html = ""
+    if focus_keys:
+        hits = []
+        for src, rec in records:
+            if not isinstance(rec, dict):
+                continue
+            found = {}
+            for k, v in rec.items():
+                kl = str(k).lower()
+                if any(fk in kl for fk in focus_keys) and v not in (None, ""):
+                    found[k] = v
+            if found:
+                hits.append((src, found))
+        if hits:
+            body = ""
+            for i, (src, found) in enumerate(hits, 1):  # tümü — kısıt yok
+                body += (
+                    "<div class='card-row'><div class='src-tag'>#" + str(i) + " · "
+                    + html.escape(str(src)) + "</div>"
+                    + _mobius_render_value(found) + "</div>"
+                )
+            focus_html = (
+                "<div class='focus-box'><h2>Bu servise özel öne çıkan alanlar ("
+                + str(len(hits)) + ")</h2><div class='card-list'>" + body + "</div></div>"
+            )
+
+    return _mobius_html_shell(
+        title_svc, aranan, tip, kind, elapsed, count, records, buckets, raw_parts,
+        accent_label, focus_html,
+    )
+
+
+def _mobius_html_svc_fio(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "fio",
+        "Kişisel Bilgiler", "🕵️ Kişisel Bilgiler HTML",
+        focus_keys=("name", "имя", "fio", "full_name", "birth", "dob", "gender", "пол", "passport", "tc"),
+    )
+
+
+def _mobius_html_svc_phone(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "phone",
+        "Telefon", "📲 Telefon HTML",
+        focus_keys=("phone", "telefon", "operator", "carrier", "номер"),
+    )
+
+
+def _mobius_html_svc_email(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "email",
+        "E-posta", "📧 E-posta HTML",
+        focus_keys=("email", "mail", "почта", "password", "hash"),
+    )
+
+
+def _mobius_html_svc_vk(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "vk",
+        "VKontakte", "💬 VKontakte HTML",
+        focus_keys=("vk", "vkontakte", "vk_id", "vkid", "city", "город"),
+    )
+
+
+def _mobius_html_svc_passport(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "passport",
+        "Pasaport", "📄 Pasaport HTML",
+        focus_keys=("passport", "паспорт", "series", "номер", "issued", "birth"),
+    )
+
+
+def _mobius_html_svc_inn(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "inn",
+        "INN", "📄 INN HTML",
+        focus_keys=("inn", "инн", "ogrn", "company", "tax"),
+    )
+
+
+def _mobius_html_svc_social(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "social",
+        "Sosyal Medya", "🎵 TikTok / IG / OK HTML",
+        focus_keys=("tiktok", "instagram", "ok.ru", "username", "followers", "url"),
+    )
+
+
+def _mobius_html_svc_docs(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "docs",
+        "Sürücü / SNILS", "📄 Belge HTML",
+        focus_keys=("snils", "снилс", "vu", "driver", "license", "document"),
+    )
+
+
+def _mobius_html_svc_net(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "net",
+        "Domain / IP", "🌐 Domain / IP HTML",
+        focus_keys=("domain", "ip", "host", "dns", "whois", "домен"),
+    )
+
+
+def _mobius_html_svc_realty(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "realty",
+        "Gayrimenkul", "🏚 Gayrimenkul HTML",
+        focus_keys=("address", "adr", "kadastro", "cadastr", "street", "город", "адрес"),
+    )
+
+
+def _mobius_html_svc_company(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "company",
+        "Tüzel kişi", "🏢 Tüzel Kişi HTML",
+        focus_keys=("ogrn", "inn", "company", "director", "organization", "kpp"),
+    )
+
+
+def _mobius_html_svc_auto(resp, aranan, search_type=None):
+    return _mobius_svc_base(
+        resp, aranan, search_type or "auto",
+        "Otomatik / Araç", "🔍 Otomatik HTML",
+        focus_keys=("plate", "vin", "car", "auto", "brand", "model", "госномер"),
+    )
+
+
+def _mobius_html_telegram(resp, aranan, search_type=None):
+    """SADECE Telegram sorgusu için özel HTML sayfa."""
+    if not isinstance(resp, dict):
+        resp = {"raw": str(resp)}
+
+    tip = _MOBIUS_TYPE_LABEL.get(search_type, search_type or "Telegram")
+    elapsed = resp.get("elapsed_seconds")
+    count = resp.get("results_count")
+    kind = resp.get("kind") or resp.get("type") or "tg"
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
     CSS, JS = _mobius_css_js()
     data = _mobius_normalize(resp)
@@ -4518,11 +4981,15 @@ def mobius_build_html_report(resp, aranan, search_type=None):
 
     uid = profile.get("user_id") or ""
     uname = str(profile.get("username") or "").lstrip("@")
+    if uname.isdigit() and str(uid) and uname == str(uid):
+        uname = ""
     first = profile.get("first_name") or ""
     last = profile.get("last_name") or ""
     display = (str(first) + " " + str(last)).strip() or (uname and ("@" + uname)) or str(aranan)
     bio = profile.get("bio") or ""
     phone = profile.get("phone") or ""
+    if str(phone).lower() in ("none", "null", "-"):
+        phone = ""
 
     n_groups = len(groups)
     n_msgs = len(messages)
@@ -4572,159 +5039,88 @@ def mobius_build_html_report(resp, aranan, search_type=None):
 
     period = ""
     if first_msg or last_msg:
-        period = esc(str(first_msg or "—")) + " — " + esc(str(last_msg or "—"))
+        period = esc(str(first_msg)[:19]) + " → " + esc(str(last_msg)[:19])
     most = ""
     if top:
-        most = esc(top["title"]) + (" — " + str(top_n) + " mesaj" if top_n >= 0 else "")
-
-    def sect(sid, title, n, inner):
-        if not inner.strip():
-            inner = "<p class='note'>Kayıt bulunamadı.</p>"
-        return (
-            "<details class='sect' id='" + sid + "' open>"
-            "<summary class='head'><i class='chev'></i>"
-            "<span class='t'>" + esc(title) + "</span>"
-            "<b class='n'>" + str(n) + "</b>"
-            "<span class='copy' role='button' tabindex='0'>Kopyala</span>"
-            "</summary><div class='fold'>" + inner + "</div></details>"
-        )
+        most = esc(top.get("title") or "") + (" · " + str(top_n) + " mesaj" if top_n >= 0 else "")
 
     def card_group(g):
-        href = ("https://t.me/" + g["username"]) if g.get("username") else ""
-        title = esc(g["title"])
+        title = g.get("title") or "—"
+        un = (g.get("username") or "").lstrip("@")
+        href = ("https://t.me/" + un) if un else ""
+        t = esc(title)
         if href:
-            title = "<a href='" + esc(href) + "'>" + title + "</a>"
-        handle = ("@" + esc(g["username"])) if g.get("username") else ""
+            t = "<a href='" + esc(href) + "'>" + t + "</a>"
         meta = []
-        if g.get("how"):
-            meta.append("<b>nasıl biliyoruz:</b> " + esc(g["how"]))
-        if g.get("messages"):
-            meta.append("<b>mesaj:</b> " + esc(g["messages"]))
+        if g.get("messages") is not None:
+            meta.append("<b>mesaj:</b> " + esc(g.get("messages")))
+        if g.get("first"):
+            meta.append("<b>ilk:</b> " + esc(str(g.get("first"))[:19]))
         if g.get("last"):
-            meta.append("<b>kayıt:</b> " + esc(g["last"]))
-        elif g.get("first"):
-            meta.append("<b>ilk:</b> " + esc(g["first"]))
-        if g.get("source"):
-            meta.append("<span class='src-tag'>" + esc(g["source"]) + "</span>")
+            meta.append("<b>son:</b> " + esc(str(g.get("last"))[:19]))
         return (
-            "<div class='card-row'>"
-            "<div class='title'>" + title + "</div>"
-            + (("<div class='handle'>" + handle + "</div>") if handle else "")
-            + (("<div class='meta'>" + "<br/>".join(meta) + "</div>") if meta else "")
+            "<div class='card-row'><div class='title'>" + t + "</div>"
+            + (("<div class='handle'>@" + esc(un) + "</div>") if un else "")
+            + (("<div class='meta'>" + " · ".join(meta) + "</div>") if meta else "")
             + "</div>"
         )
 
     def card_msg(m):
-        meta = []
-        if m.get("date"):
-            meta.append("<b>tarih:</b> " + esc(m["date"]))
-        chat_html = ""
-        if m.get("chat") or m.get("chat_username"):
-            if m.get("chat") and m.get("chat_username"):
-                t = (
-                    "<a href='https://t.me/" + esc(m["chat_username"]) + "'>" + esc(m["chat"]) + "</a>"
-                    " <span class='handle'>@" + esc(m["chat_username"]) + "</span>"
-                )
-            elif m.get("chat_username"):
-                t = "<a href='https://t.me/" + esc(m["chat_username"]) + "'>@" + esc(m["chat_username"]) + "</a>"
-            else:
-                t = esc(m.get("chat") or "")
-            chat_html = "<div class='chatline'>" + t + "</div>"
-        if m.get("source"):
-            meta.append("<span class='src-tag'>" + esc(m["source"]) + "</span>")
+        text = m.get("text") or ""
+        chat = m.get("chat") or m.get("title") or ""
+        un = (m.get("username") or "").lstrip("@")
+        dt = m.get("date") or m.get("timestamp") or ""
+        href = ("https://t.me/" + un) if un else ""
+        chat_html = esc(chat)
+        if href:
+            chat_html = "<a href='" + esc(href) + "'>" + chat_html + "</a>"
         return (
-            "<div class='card-row'>"
-            "<div class='msg'>" + esc(m["text"]) + "</div>"
-            + (("<div class='meta'>" + " · ".join(meta) + "</div>") if meta else "")
-            + chat_html
-            + "</div>"
+            "<div class='card-row'><div class='msg'>" + esc(text) + "</div>"
+            "<div class='chatline'>" + chat_html
+            + ((" · " + esc(str(dt)[:19])) if dt else "")
+            + "</div></div>"
         )
 
     def card_gift(g):
-        lines = ["<div class='title'>" + esc(g.get("title") or "Hediye") + "</div>"]
-        meta = []
-        if g.get("from"):
-            meta.append("<b>gönderen:</b> " + esc(g["from"]))
-        if g.get("model"):
-            meta.append("<b>model:</b> " + esc(g["model"]))
-        if g.get("value"):
-            meta.append("<b>değer:</b> " + esc(g["value"]))
-        if g.get("source"):
-            meta.append("<span class='src-tag'>" + esc(g["source"]) + "</span>")
         return (
-            "<div class='card-row'>" + "".join(lines)
-            + (("<div class='meta'>" + "<br/>".join(meta) + "</div>") if meta else "")
-            + "</div>"
+            "<div class='card-row'><div class='title'>" + esc(g.get("title") or g.get("name") or "Hediye") + "</div>"
+            + "<div class='meta'>" + esc(json.dumps(g, ensure_ascii=False)) + "</div></div>"
         )
 
-    def card_leak(lk):
-        lines = ["<span class='src-tag'>" + esc(lk.get("database") or "Leak") + "</span>"]
-        meta = []
-        if lk.get("name"):
-            meta.append("<b>isim:</b> " + esc(lk["name"]))
-        if lk.get("email"):
-            meta.append("<b>e-posta:</b> " + esc(lk["email"]))
-        if lk.get("phone"):
-            meta.append("<b>telefon:</b> " + esc(lk["phone"]))
-        if lk.get("nick"):
-            meta.append("<b>nick:</b> " + esc(lk["nick"]))
-        if lk.get("password"):
-            meta.append("<b>şifre:</b> " + esc(lk["password"]))
-        if lk.get("ip"):
-            meta.append("<b>IP:</b> " + esc(lk["ip"]))
-        if lk.get("link"):
-            meta.append("<b>link:</b> " + esc(lk["link"]))
-        for k, v in (lk.get("extra") or {}).items():
-            meta.append("<b>" + esc(_mobius_tr_key(k)) + ":</b> " + esc(v))
+    def card_leak(x):
+        if not isinstance(x, dict):
+            return "<div class='card-row'><div class='msg'>" + esc(x) + "</div></div>"
+        db = x.get("database") or x.get("source") or x.get("db") or "Leak"
+        lines = []
+        for k, v in x.items():
+            if v is None or v == "" or k in ("database", "source", "db"):
+                continue
+            if isinstance(v, (dict, list)):
+                try:
+                    v = json.dumps(v, ensure_ascii=False)
+                except Exception:
+                    v = str(v)
+            lines.append("<b>" + esc(str(k)) + ":</b> " + esc(v))
         return (
-            "<div class='card-row'>" + "".join(lines)
-            + (("<div class='meta'>" + "<br/>".join(meta) + "</div>") if meta else "")
-            + "</div>"
+            "<div class='card-row'><div class='src-tag'>" + esc(db) + "</div>"
+            "<div class='meta'>" + "<br>".join(lines) + "</div></div>"
         )
 
-    def card_simple(val, note=""):
-        return (
-            "<div class='card-row'><div class='title'>" + esc(val) + "</div>"
-            + (("<div class='meta'>" + esc(note) + "</div>") if note else "")
-            + "</div>"
-        )
-
-    name_rows = []
-    if display:
-        name_rows.append(card_simple(display, "şimdi"))
-    for n in names:
-        if n and n != display:
-            name_rows.append(card_simple(n))
-
-    uname_rows = []
-    if uname:
-        uname_rows.append(card_simple("@" + uname, "şimdi"))
-    for u in usernames:
-        if u and u != uname:
-            uname_rows.append(card_simple("@" + u))
+    name_rows = ["<div class='card-row'><div class='title'>" + esc(n) + "</div></div>" for n in names]
+    uname_rows = ["<div class='card-row'><div class='title'>@" + esc(u) + "</div></div>" for u in usernames]
 
     by_chat = {}
     for m in messages:
-        key = m.get("chat") or m.get("chat_username") or "—"
-        by_chat[key] = by_chat.get(key, 0) + 1
-    for g in groups:
-        if g.get("messages"):
-            try:
-                c = int(re.sub(r"\D", "", str(g["messages"])) or 0)
-            except Exception:
-                c = 0
-            if c:
-                by_chat[g["title"]] = max(by_chat.get(g["title"], 0), c)
-
+        key = m.get("chat") or m.get("title") or "?"
+        by_chat.setdefault(key, []).append(m)
     by_chat_cards = []
-    for title, cnt in sorted(by_chat.items(), key=lambda x: -x[1]):
+    for chat, ms in by_chat.items():
+        cnt = len(ms)
         un = ""
-        for g in groups:
-            if g["title"] == title:
-                un = g.get("username") or ""
-                break
+        if ms:
+            un = (ms[0].get("username") or "").lstrip("@")
         href = ("https://t.me/" + un) if un else ""
-        t = esc(title)
+        t = esc(chat)
         if href:
             t = "<a href='" + esc(href) + "'>" + t + "</a>"
         by_chat_cards.append(
@@ -4733,28 +5129,27 @@ def mobius_build_html_report(resp, aranan, search_type=None):
             + "<div class='meta'><b>mesaj:</b> " + str(cnt) + "</div></div>"
         )
 
-    raw_parts = []
-    for title, payload in _mobius_extract_all(resp):
-        try:
-            dump = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
-        except Exception:
-            dump = str(payload)
-        raw_parts.append(
-            "<details class='raw'><summary>" + esc(title) + "</summary>"
-            "<pre style='white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:320px;overflow:auto;margin:0;padding:12px;border-top:1px solid var(--line)'>"
-            + esc(dump) + "</pre></details>"
-        )
+    raw_parts = _mobius_raw_parts(resp)
 
     facts = (
         fact("Sorgu", esc(aranan))
         + fact("Tip", esc(tip))
+        + fact("Şablon", "📟 Telegram HTML")
         + fact("API", esc(kind))
         + fact("Süre", (str(elapsed) + " sn") if elapsed is not None else "")
-        + fact("Kaynak", esc(count) if count is not None else "")
+        + fact("Kayıt", esc(count) if count is not None else "")
         + fact("Biyografi", esc(bio) if bio else "")
         + fact("İlk ve son mesaj", period)
         + fact("En çok yazdığı yer", most)
     )
+
+    def sect(sid, title, n, body):
+        return (
+            "<details class='sect' id='" + sid + "' open>"
+            "<summary class='head'><i class='chev'></i> " + esc(title)
+            + " <span class='n'>" + str(n) + "</span></summary>"
+            "<div class='fold'>" + body + "</div></details>"
+        )
 
     nav = (
         "<nav class='index' aria-label='Bölümler'><div class='strip'>"
@@ -4773,7 +5168,7 @@ def mobius_build_html_report(resp, aranan, search_type=None):
         "<!doctype html><html lang='tr'><head>"
         "<meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        "<title>Cyber Search OSINT — " + esc(tip) + " — " + esc(display) + "</title>"
+        "<title>Cyber Search — Telegram — " + esc(display) + "</title>"
         "<style>" + CSS + "</style></head><body>"
         "<header class='top'><div class='wrap'>"
         "<span class='brand'><span class='word'>Cyber Search</span></span>"
@@ -4781,9 +5176,8 @@ def mobius_build_html_report(resp, aranan, search_type=None):
         "<button class='theme' id='theme' type='button'>Tema</button>"
         "</div></header>"
         "<div class='wrap page'>"
-        "<p class='caps kicker'>Kullanıcı raporu · " + esc(now) + "</p>"
-        "<section class='hero'>"
-        "<div class='who'>"
+        "<p class='caps kicker'>Telegram OSINT · " + esc(now) + "</p>"
+        "<section class='hero'><div class='who'>"
         "<div class='sigil'>" + esc(initials) + "</div>"
         "<div class='names'><h1>" + esc(display) + "</h1>"
         "<div class='chips'>" + "".join(chips) + "</div></div></div>"
