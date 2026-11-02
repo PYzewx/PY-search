@@ -3947,7 +3947,7 @@ def mobius_type_kb():
         _btn("🕵️ Kişisel Bilgiler", "mobius_t_fio", "success"),
         _btn("📲 Telefon", "mobius_t_phone", "primary"),
         _btn("📧 E-posta", "mobius_t_email", "primary"),
-        _btn("🚘 Araç", "mobius_t_auto", "primary"),
+        _btn("🚘 Araç", "mobius_t_vehicle", "primary"),
         _btn("💬 VKontakte", "mobius_t_vk", "success"),
         _btn("🎵 TikTok/IG/OK", "mobius_t_social", "primary"),
         _btn("📟 Telegram", "mobius_t_tg", "success"),
@@ -3964,7 +3964,8 @@ def mobius_type_kb():
 
 _MOBIUS_TYPE_LABEL = {
     None: "Otomatik",
-    "auto": "Otomatik / Araç",
+    "auto": "Otomatik",
+    "vehicle": "Araç",
     "phone": "Telefon",
     "tg": "Telegram",
     "vk": "VKontakte",
@@ -3979,9 +3980,9 @@ _MOBIUS_TYPE_LABEL = {
     "company": "Tüzel kişi",
 }
 
-# API'ye giden type (desteklenmeyenler auto)
 _MOBIUS_API_TYPE = {
     "auto": "auto",
+    "vehicle": "auto",
     "phone": "phone",
     "tg": "tg",
     "vk": "vk",
@@ -3994,6 +3995,123 @@ _MOBIUS_API_TYPE = {
     "net": "auto",
     "realty": "auto",
     "company": "auto",
+}
+
+# Her servis için özel giriş metni
+_MOBIUS_PROMPTS = {
+    "fio": (
+        "🔍 <b>OSINT · Kişisel Bilgiler</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Ad soyad yaz (doğum tarihi opsiyonel):\n\n"
+        "📌 <code>Soyad Ad 01.01.1990</code>\n"
+        "📌 <code>Burak Şaşmaz</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "phone": (
+        "🔍 <b>OSINT · Telefon</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Telefon numarasını yaz:\n\n"
+        "📌 <code>79001234567</code>\n"
+        "📌 <code>+90 530 123 45 67</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "email": (
+        "🔍 <b>OSINT · E-posta</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "E-posta adresini yaz:\n\n"
+        "📌 <code>ornek@gmail.com</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "vehicle": (
+        "🔍 <b>OSINT · Araç</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Plaka veya VIN yaz:\n\n"
+        "📌 <code>34ABC123</code>\n"
+        "📌 <code>XTA00000000000000</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "vk": (
+        "🔍 <b>OSINT · VKontakte</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "VK kullanıcı adı veya profil linki:\n\n"
+        "📌 <code>vk.com/username</code>\n"
+        "📌 <code>username</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "social": (
+        "🔍 <b>OSINT · TikTok / Instagram / OK</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Profil linki veya kullanıcı adı:\n\n"
+        "📌 <code>tiktok.com/@user</code>\n"
+        "📌 <code>instagram.com/user</code>\n"
+        "📌 <code>ok.ru/profile/123</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "tg": (
+        "🔍 <b>OSINT · Telegram</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Kullanıcı adı veya ID yaz:\n\n"
+        "📌 <code>@username</code>\n"
+        "📌 <code>123456789</code>\n"
+        "📌 <code>tg123456789</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "passport": (
+        "🔍 <b>OSINT · Pasaport</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Pasaport numarasını yaz:\n\n"
+        "📌 <code>4510123456</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "docs": (
+        "🔍 <b>OSINT · Sürücü / SNILS</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Belge numarasını yaz:\n\n"
+        "📌 <code>/vu 1234567890</code>\n"
+        "📌 <code>/snils 12345678901</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "inn": (
+        "🔍 <b>OSINT · INN</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "INN numarasını yaz:\n\n"
+        "📌 <code>7707083893</code>\n"
+        "📌 <code>/inn 123456789012</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "net": (
+        "🔍 <b>OSINT · Domain / IP</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Alan adı, IP veya etiket:\n\n"
+        "📌 <code>example.com</code>\n"
+        "📌 <code>192.0.2.1</code>\n"
+        "📌 <code>/tag meslek şehir</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "realty": (
+        "🔍 <b>OSINT · Gayrimenkul</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Adres veya kadastro no:\n\n"
+        "📌 <code>/adr Şehir, Cadde, No</code>\n"
+        "📌 <code>77:01:0000000:1234</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "company": (
+        "🔍 <b>OSINT · Tüzel kişi</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "OGRN / OGRNIP veya INN:\n\n"
+        "📌 <code>1234567890123</code>\n"
+        "📌 <code>/inn 7707083893</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
+    "auto": (
+        "🔍 <b>OSINT · Otomatik</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Herhangi bir sorgu yaz — tür otomatik seçilir:\n\n"
+        "📌 <code>@username</code> · <code>+79001234567</code>\n"
+        "📌 <code>isim soyisim</code> · <code>mail@x.com</code>\n\n"
+        "<i>İptal: <code>iptal</code></i>"
+    ),
 }
 
 def _mq(s, n=500):
@@ -4512,6 +4630,7 @@ def mobius_build_html_report(resp, aranan, search_type=None):
         "realty": _mobius_html_svc_realty,
         "company": _mobius_html_svc_company,
         "auto": _mobius_html_svc_auto,
+        "vehicle": _mobius_html_svc_auto,
     }
     fn = builders.get(st, _mobius_html_svc_auto)
     return fn(resp, aranan, search_type)
@@ -4623,6 +4742,51 @@ def _mobius_classify_html(src, rec):
     return "Diğer"
 
 
+
+_MOBIUS_RU_SCRUB = [
+    ("профиль и активность", "Profil ve aktivite"),
+    ("чаты и группы", "Sohbetler ve gruplar"),
+    ("сообщения в чатах", "Sohbet mesajları"),
+    ("полное имя", "Tam ad"),
+    ("дата рождения", "doğum tarihi"),
+    ("место жительства", "ikamet yeri"),
+    ("юридическое лицо", "tüzel kişi"),
+    ("индивидуальный предприниматель", "bireysel girişimci"),
+    ("прекратила деятельность", "faaliyeti sona erdi"),
+    ("действующая", "aktif"),
+    ("найдено чатов", "bulunan sohbet"),
+    ("сообщений в чатах", "sohbet mesajı"),
+    ("первое сообщение", "ilk mesaj"),
+    ("последнее сообщение", "son mesaj"),
+    ("текст сообщения", "mesaj metni"),
+    ("название чата", "sohbet adı"),
+    ("турция", "Türkiye"),
+    ("москва", "Moskova"),
+    ("чатов", "sohbet"),
+    ("сообщений", "mesaj"),
+    ("шт.", "adet"),
+    ("имя", "ad"),
+    ("фамилия", "soyad"),
+    ("телефон", "telefon"),
+    ("почта", "e-posta"),
+    ("город", "şehir"),
+    ("страна", "ülke"),
+    ("адрес", "adres"),
+    ("пароль", "şifre"),
+    ("база", "veritabanı"),
+]
+
+def _mobius_scrub_ru(s):
+    if not isinstance(s, str) or not s:
+        return s
+    out = s
+    for a, b in _MOBIUS_RU_SCRUB:
+        if a in out.lower() or a in out:
+            # case-insensitive replace
+            import re as _re
+            out = _re.sub(_re.escape(a), b, out, flags=_re.I)
+    return out
+
 _MOBIUS_FIELD_TR = {
     "phone": "Telefon", "email": "E-posta", "username": "Kullanıcı adı",
     "first_name": "Ad", "last_name": "Soyad", "full_name": "Tam ad", "name": "Ad",
@@ -4648,7 +4812,9 @@ _MOBIUS_FIELD_TR = {
 
 def _mobius_tr_key(k):
     key = str(k).lower().strip()
-    return _MOBIUS_FIELD_TR.get(key, str(k))
+    if key in _MOBIUS_FIELD_TR:
+        return _MOBIUS_FIELD_TR[key]
+    return _mobius_scrub_ru(str(k))
 
 
 def _mobius_render_value(v):
@@ -4660,7 +4826,7 @@ def _mobius_render_value(v):
     if isinstance(v, (int, float)):
         return html.escape(str(v))
     if isinstance(v, str):
-        return html.escape(v)
+        return html.escape(_mobius_scrub_ru(v))
     if isinstance(v, list):
         if not v:
             return "<span class='muted'>(boş)</span>"
@@ -4741,7 +4907,7 @@ def _mobius_html_shell(title_svc, aranan, tip, kind, elapsed, count, records, bu
 
     sections = "".join(sect(k.lower(), k, buckets.get(k) or []) for k in order)
     sections += (
-        "<details class='sect' id='raw' open>"
+        "<details class='sect' id='raw'>"
         "<summary class='head'><i class='chev'></i> Ham API kaynakları"
         " <span class='n'>" + str(len(raw_parts)) + "</span></summary>"
         "<div class='fold'>" + "".join(raw_parts) + "</div></details>"
@@ -4773,16 +4939,26 @@ def _mobius_html_shell(title_svc, aranan, tip, kind, elapsed, count, records, bu
     )
 
     extra_css = (
-        ".kv{display:grid;grid-template-columns:minmax(120px,220px) 1fr;gap:4px 16px;"
-        "padding:4px 0;border-bottom:1px solid var(--line)}"
-        ".kv .k{color:var(--fg-2);font-size:13px;font-weight:500}"
-        ".kv .vv{color:var(--fg);font-size:14px;overflow-wrap:anywhere;white-space:pre-wrap}"
-        ".sub{margin:8px 0 8px 8px;padding-left:10px;border-left:2px solid var(--line)}"
+        ".kv{display:grid;grid-template-columns:1fr;gap:2px;padding:10px 0;"
+        "border-bottom:1px solid var(--line)}"
+        "@media (min-width:720px){.kv{grid-template-columns:minmax(140px,220px) 1fr;gap:4px 16px}}"
+        ".kv .k{color:var(--fg-2);font-size:12px;font-weight:500;letter-spacing:.04em;"
+        "text-transform:uppercase}"
+        ".kv .vv{color:var(--fg);font-size:15px;overflow-wrap:anywhere;white-space:pre-wrap;line-height:1.45}"
+        ".sub{margin:8px 0 8px 4px;padding:8px 0 8px 12px;border-left:2px solid var(--line)}"
+        ".card-row{padding:16px 0;border-bottom:1px solid var(--line)}"
         ".card-row .kv:last-child{border-bottom:none}"
+        ".src-tag{display:inline-block;font-size:11px;padding:3px 10px;margin-bottom:10px;"
+        "border:1px solid var(--line);color:var(--fg-2);border-radius:4px}"
         ".svc-badge{display:inline-block;margin-top:10px;padding:6px 12px;border:1px solid var(--line);"
         "font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-2)}"
-        ".focus-box{margin-top:28px;padding:20px;border:1px solid var(--line)}"
-        ".focus-box h2{margin:0 0 12px;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-2)}"
+        ".focus-box{margin-top:24px;padding:16px;border:1px solid var(--line);border-radius:8px}"
+        ".focus-box h2{margin:0 0 12px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-2)}"
+        "h1{font-size:clamp(24px,6vw,40px)!important}"
+        ".tiles{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:20px!important}"
+        "@media (min-width:720px){.tiles{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))!important}}"
+        ".raw summary{font-size:13px}"
+        "pre{font-size:11px!important}"
     )
 
     return (
@@ -9417,10 +9593,8 @@ def register_handlers(bot_instance):
                     bot_instance.answer_callback_query(call.id)
                 except Exception:
                     pass
-                st = data.replace("mobius_t_", "", 1)
-                if st == "auto":
-                    st = None
-                tip = _MOBIUS_TYPE_LABEL.get(st or "auto", "Auto")
+                st = data.replace("mobius_t_", "", 1) or "auto"
+                tip = _MOBIUS_TYPE_LABEL.get(st, st)
                 allowed, _ = mobius_can_query(uid)
                 if not allowed:
                     bot_instance.send_message(
@@ -9430,14 +9604,10 @@ def register_handlers(bot_instance):
                         parse_mode="HTML",
                     )
                     return
+                prompt = _MOBIUS_PROMPTS.get(st) or _MOBIUS_PROMPTS.get("auto")
                 m = bot_instance.send_message(
                     call.message.chat.id,
-                    "🔍 <b>Telegram OSINT</b> · Tip: <b>%s</b>\n"
-                    "━━━━━━━━━━━━━━━━━━━━━\n"
-                    "Sorguyu yaz:\n\n"
-                    "📌 <code>@username</code> · <code>+79001234567</code>\n"
-                    "📌 <code>isim soyisim</code> · <code>mail@x.com</code>\n\n"
-                    "<i>İptal: <code>iptal</code></i>" % (tip,),
+                    prompt,
                     parse_mode="HTML",
                 )
                 _st = st
