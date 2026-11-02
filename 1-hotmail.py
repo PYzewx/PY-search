@@ -4004,7 +4004,7 @@ _MOBIUS_PROMPTS = {
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "Ad soyad yaz (doğum tarihi opsiyonel):\n\n"
         "📌 <code>Soyad Ad 01.01.1990</code>\n"
-        "📌 <code>Burak Şaşmaz</code>\n\n"
+        "📌 <code>Ali Veli</code>\n\n"
         "<i>İptal: <code>iptal</code></i>"
     ),
     "phone": (
