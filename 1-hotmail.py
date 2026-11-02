@@ -5508,22 +5508,56 @@ def _admin_mobius_take(msg, bot_instance):
     bot_instance.reply_to(msg, f"✅ -{amount} TG-OSINT: <code>{target}</code>\n💰 Yeni: <b>{new_bal}</b>", parse_mode="HTML")
 
 
+# ajax.ink / ajaxsystems.fun — key zorunlu
+TURKIYE_MAINTENANCE = True  # True = kullanıcıya bakımdadır
+TURKIYE_API_KEY = os.getenv("TURKIYE_API_KEY", "ak_67b2972bd51298e4296b7682ad0278afec8cb2b9e491d563").strip()
+TURKIYE_API_BASE = os.getenv("TURKIYE_API_BASE", "https://api.ajax.ink").rstrip("/")
+
 TURKIYE_API = {
-    "tc": {"url": "https://ajaxsystems.fun/tc.php?tc={tc}", "icon": "🆔", "tr": "TC Sorgu", "en": "TC Query", "ar": "استعلام TC", "params": ["tc"]},
-    "tcpro": {"url": "https://ajaxsystems.fun/tcpro.php?tc={tc}", "icon": "🔍", "tr": "TC Pro Sorgu", "en": "TC Pro", "ar": "TC Pro", "params": ["tc"]},
-    "adsoyad": {"url": "https://ajaxsystems.fun/adsoyad.php?ad={ad}&soyad={soyad}", "icon": "👤", "tr": "Ad Soyad", "en": "Name Surname", "ar": "الاسم", "params": ["ad", "soyad"]},
-    "aile": {"url": "https://ajaxsystems.fun/aile.php?tc={tc}", "icon": "👨‍👩‍👧", "tr": "Aile Sorgu", "en": "Family", "ar": "العائلة", "params": ["tc"]},
-    "ailepro": {"url": "https://ajaxsystems.fun/ailepro.php?tc={tc}", "icon": "👨‍👩‍👧‍👦", "tr": "Aile Pro", "en": "Family Pro", "ar": "العائلة Pro", "params": ["tc"]},
-    "sulale": {"url": "https://ajaxsystems.fun/sulale.php?tc={tc}", "icon": "🌳", "tr": "Sülale Sorgu", "en": "Lineage", "ar": "النسب", "params": ["tc"]},
-    "tcgsm": {"url": "https://ajaxsystems.fun/tcgsm.php?tc={tc}&auth=fire", "icon": "📱", "tr": "TC → GSM", "en": "TC to GSM", "ar": "TC إلى GSM", "params": ["tc"]},
-    "gsmtc": {"url": "https://ajaxsystems.fun/gsmtc.php?gsm={gsm}&auth=fire", "icon": "📞", "tr": "GSM → TC", "en": "GSM to TC", "ar": "GSM إلى TC", "params": ["gsm"]},
-    "eokul": {"url": "https://ajaxsystems.fun/eokul.php?tc={tc}", "icon": "🎓", "tr": "E-Okul Sorgu", "en": "E-School", "ar": "المدرسة", "params": ["tc"]},
-    "tapu": {"url": "https://ajaxsystems.fun/tapu.php?tc={tc}", "icon": "🏠", "tr": "Tapu Sorgu", "en": "Title Deed", "ar": "الطابو", "params": ["tc"]},
-    "adaparsel": {"url": "https://ajaxsystems.fun/adaparsel.php?il={il}&ilce={ilce}", "icon": "🗺️", "tr": "Ada Parsel", "en": "Block Parcel", "ar": "القطعة", "params": ["il", "ilce"]},
-    "adres": {"url": "https://apiv2.ajaxsystems.fun/adres.php?tc={tc}", "icon": "🏠", "tr": "Adres Sorgu", "en": "Address", "ar": "العنوان", "params": ["tc"]},
-    "sgk": {"url": "https://solidarksystems.alwaysdata.net/sgk.php?tc={tc}", "icon": "🏥", "tr": "SGK Sorgu", "en": "SGK Query", "ar": "SGK", "params": ["tc"]},
-    "vesika": {"url": "https://solidarksystems.alwaysdata.net/vesika.php?tc={tc}", "icon": "🪪", "tr": "Vesika Sorgu", "en": "ID Photo", "ar": "صورة", "params": ["tc"], "paid": True},
+    "tc": {"path": "/tc.php", "icon": "🆔", "tr": "TC Sorgu", "en": "TC Query", "ar": "استعلام TC", "params": ["tc"]},
+    "tcpro": {"path": "/tcpro.php", "icon": "🔍", "tr": "TC Pro Sorgu", "en": "TC Pro", "ar": "TC Pro", "params": ["tc"]},
+    "adsoyad": {"path": "/adsoyad.php", "icon": "👤", "tr": "Ad Soyad", "en": "Name Surname", "ar": "الاسم", "params": ["ad", "soyad"]},
+    "aile": {"path": "/ailepro.php", "icon": "👨‍👩‍👧", "tr": "Aile Sorgu", "en": "Family", "ar": "العائلة", "params": ["tc"]},
+    "ailepro": {"path": "/ailepro.php", "icon": "👨‍👩‍👧‍👦", "tr": "Aile Pro", "en": "Family Pro", "ar": "العائلة Pro", "params": ["tc"]},
+    "sulale": {"path": "/sulale.php", "icon": "🌳", "tr": "Sülale Sorgu", "en": "Lineage", "ar": "النسب", "params": ["tc"]},
+    "tcgsm": {"path": "/tcgsm.php", "icon": "📱", "tr": "TC → GSM", "en": "TC to GSM", "ar": "TC إلى GSM", "params": ["tc"]},
+    "gsmtc": {"path": "/gsmtc.php", "icon": "📞", "tr": "GSM → TC", "en": "GSM to TC", "ar": "GSM إلى TC", "params": ["gsm"]},
+    "adres": {"path": "/adres.php", "icon": "🏠", "tr": "Adres Sorgu", "en": "Address", "ar": "العنوان", "params": ["tc"]},
+    "tapu": {"path": "/tapu.php", "icon": "🏠", "tr": "Tapu Sorgu", "en": "Title Deed", "ar": "الطابو", "params": ["tc"]},
+    "adaparsel": {"path": "/adaparsel.php", "icon": "🗺️", "tr": "Ada Parsel", "en": "Block Parcel", "ar": "القطعة", "params": ["il", "ilce"]},
+    "isyeri": {"path": "/isyeri.php", "icon": "🏢", "tr": "İşyeri Sorgu", "en": "Workplace", "ar": "العمل", "params": ["tc"]},
+    "eokul": {"path": "/eokul.php", "icon": "🎓", "tr": "E-Okul Vesika", "en": "E-School", "ar": "المدرسة", "params": ["tc"]},
+    # Eski solidark (opsiyonel — çalışmazsa eokul kullan)
+    "sgk": {"path": "/tcpro.php", "icon": "🏥", "tr": "SGK / TC Pro", "en": "SGK/TC Pro", "ar": "SGK", "params": ["tc"]},
+    "vesika": {"path": "/eokul.php", "icon": "🪪", "tr": "Vesika (E-Okul)", "en": "ID Photo", "ar": "صورة", "params": ["tc"], "paid": True},
 }
+
+
+def turkey_request(url, timeout=(10, 45)):
+    """Türkiye API GET — key header + query."""
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json, text/plain, */*",
+        "X-API-Key": TURKIYE_API_KEY,
+    }
+    return requests.get(url, headers=headers, timeout=timeout, verify=False)
+
+def turkey_build_url(tool, params: dict) -> str:
+    """ajax API URL + key (query)."""
+    cfg = TURKIYE_API.get(tool) or {}
+    path = cfg.get("path") or cfg.get("url") or ""
+    if path.startswith("http"):
+        base_url = path
+    else:
+        base_url = TURKIYE_API_BASE + path
+    q = dict(params)
+    if TURKIYE_API_KEY:
+        q["key"] = TURKIYE_API_KEY
+    # query string
+    from urllib.parse import urlencode
+    sep = "&" if "?" in base_url else "?"
+    # if path still has {placeholders} strip them — we only use clean path
+    return base_url.split("?")[0] + sep + urlencode(q, safe="")
 
 TURKEY_PROMPTS = {
     "tr": {
@@ -5540,6 +5574,7 @@ TURKEY_PROMPTS = {
         "adaparsel": "🗺️ İl,İlçe girin (Örn: İSTANBUL,KADIKÖY):",
         "adres": "🏠 Adres Sorgu\nTC Kimlik Numarası girin (11 haneli):",
         "sgk": "🏥 TC Kimlik Numarası girin (11 haneli):",
+        "isyeri": "🏢 TC Kimlik Numarası girin (11 haneli):",
         "vesika": "🪪 Vesika — TC Kimlik Numarası (11 haneli):",
     },
     "en": {
@@ -5571,7 +5606,7 @@ def tools_kb(user_id):
     """
     mk = InlineKeyboardMarkup(row_width=2)
     mk.add(
-        _btn("🇹🇷 Türkiye Sorguları", "menu_turkey", "success"),
+        _btn("🇹🇷 Türkiye Sorguları 🛠️", "menu_turkey", "danger"),
         _btn("SearchX 😈", "menu_lmnx", "primary"),
     )
     mk.add(
@@ -5940,6 +5975,7 @@ def turkey_kb(user_id):
     )
     mk.add(_btn(lbl("adaparsel"), "tr_adaparsel", "success"))
     mk.add(_btn(lbl("adres"), "tr_adres", "primary"))
+    mk.add(_btn(lbl("isyeri"), "tr_isyeri", "primary"))
     mk.add(_btn(lbl("sgk"), "tr_sgk", "success"))
     mk.add(_btn("🪪 Vesika Sorgu ⭐", "tr_vesika", "danger"))
     mk.add(
@@ -8993,11 +9029,37 @@ def register_handlers(bot_instance):
                 open_tools_menu(bot_instance, call.message.chat.id, uid)
                 return
             if data == "menu_turkey":
+                # Bakım modu — admin hariç
+                if TURKIYE_MAINTENANCE and uid != ADMIN_ID:
+                    try:
+                        bot_instance.answer_callback_query(
+                            call.id, "🛠️ Bakımdadır", show_alert=True,
+                        )
+                    except Exception:
+                        pass
+                    txt = (
+                        "🇹🇷 <b>Türkiye Sorguları</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n"
+                        "🛠️ <b>Bakımdadır</b>\n\n"
+                        "Bu servis geçici olarak kapalı.\n"
+                        "Açıldığında duyuru yapılır.\n\n"
+                        "<i>Anlayışın için teşekkürler.</i>"
+                    )
+                    try:
+                        bot_instance.edit_message_text(
+                            txt, call.message.chat.id, call.message.message_id,
+                            parse_mode="HTML",
+                        )
+                    except Exception:
+                        bot_instance.send_message(
+                            call.message.chat.id, txt, parse_mode="HTML",
+                        )
+                    return
                 try:
                     bot_instance.answer_callback_query(call.id)
                 except Exception:
                     pass
-                txt = "🇹🇷 <b>Türkiye Sorguları</b>\nSorgu türünü seç:"
+                txt = "🇹🇷 <b>Türkiye Sorguları</b>\n🛠️ Admin — bakım bypass\nSorgu türünü seç:"
                 try:
                     bot_instance.edit_message_text(
                         txt, call.message.chat.id, call.message.message_id,
@@ -10181,6 +10243,26 @@ def register_handlers(bot_instance):
                 except: pass
                 return
             if data.startswith("tr_"):
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                if TURKIYE_MAINTENANCE and uid != ADMIN_ID:
+                    try:
+                        bot_instance.answer_callback_query(
+                            call.id, "🛠️ Bakımdadır", show_alert=True,
+                        )
+                    except Exception:
+                        pass
+                    bot_instance.send_message(
+                        call.message.chat.id,
+                        "🇹🇷 <b>Türkiye Sorguları</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n"
+                        "🛠️ <b>Bakımdadır</b>\n\n"
+                        "Bu servis geçici olarak kapalı.",
+                        parse_mode="HTML",
+                    )
+                    return
                 key = data[3:]
                 if key == "vesika" and not vesika_can_query(uid) and uid != ADMIN_ID:
                     try:
@@ -11761,9 +11843,19 @@ def _admin_sx_give_user(msg, bot_instance, days=30):
 
 def _process_turkey(msg, tool, bot_instance):
     uid = msg.from_user.id
+    if TURKIYE_MAINTENANCE and uid != ADMIN_ID:
+        bot_instance.reply_to(
+            msg,
+            "🇹🇷 <b>Türkiye Sorguları</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "🛠️ <b>Bakımdadır</b>\n\n"
+            "Bu servis geçici olarak kapalı.",
+            parse_mode="HTML",
+        )
+        return
     param = (msg.text or "").strip()
     l = lang(uid)
-    if tool in ("tc", "tcpro", "aile", "ailepro", "sulale", "tcgsm", "eokul", "tapu", "adres", "sgk", "vesika"):
+    if tool in ("tc", "tcpro", "aile", "ailepro", "sulale", "tcgsm", "eokul", "tapu", "adres", "sgk", "vesika", "isyeri"):
         if not (param.isdigit() and len(param) == 11):
             bot_instance.reply_to(msg, s(uid, "invalid_tc"))
             return
@@ -11798,7 +11890,7 @@ def _process_turkey(msg, tool, bot_instance):
     if not api_cfg:
         bot_instance.edit_message_text("❌ Geçersiz araç.", msg.chat.id, sm.message_id)
         return
-    url = api_cfg["url"]
+    qparams = {}
     if tool == "adsoyad":
         parts = param.split()
         if len(parts) >= 3:
@@ -11806,21 +11898,24 @@ def _process_turkey(msg, tool, bot_instance):
             soyad = parts[-1]
         else:
             ad, soyad = parts[0], parts[1]
-        url = url.replace("{ad}", requests.utils.quote(ad)).replace("{soyad}", requests.utils.quote(soyad))
+        qparams = {"ad": ad, "soyad": soyad}
     elif tool == "adaparsel":
         pts = param.split(",")
-        url = url.replace("{il}", pts[0].strip().upper()).replace("{ilce}", pts[1].strip().upper())
+        qparams = {"il": pts[0].strip().upper(), "ilce": pts[1].strip().upper()}
+        if len(pts) > 2 and pts[2].strip():
+            qparams["mahalle"] = pts[2].strip()
     elif tool == "gsmtc":
-        url = url.replace("{gsm}", param)
+        qparams = {"gsm": param}
     else:
-        url = url.replace("{tc}", param)
+        qparams = {"tc": param}
+    url = turkey_build_url(tool, qparams)
 
     # Vesika: fotoğraf cevabi (JSON: durum + veri.vesika base64 JPEG)
     if tool == "vesika":
         try:
             import base64
             import io
-            r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=(10, 45), verify=False)
+            r = turkey_request(url, timeout=(10, 45))
             ctype = (r.headers.get("Content-Type") or "").lower()
             photo_bytes = None
             caption_extra = ""
