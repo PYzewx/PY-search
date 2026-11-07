@@ -111,7 +111,7 @@ LOG_PRICE = 600
 LOG_FREE_LIMIT = 3
 LOG_FREE_MAX = 100
 LOG_API_BASE = "https://site-viphesab.my-board.org/log.php"
-LOG_AUTH = "@gaynotcu"
+LOG_AUTH = "ganyotcuvipperlogapi"
 # Yeni Log API (oncelikli)
 LOG_API_NEW = "https://logcuyum.pythonanywhere.com/log/site?site="
 
@@ -5801,7 +5801,7 @@ def log_fetch(domain, limit=None):
             print(f"[LOG NEW] fail: {e}")
 
         # 2) ESKI API — site-viphesab (cookie challenge destekli)
-        params = {"url": domain, "auth": LOG_AUTH}
+        params = {"url": domain, "log": "1", "auth": LOG_AUTH}
         if limit is not None:
             params["limit"] = str(limit)
         session = requests.Session()
