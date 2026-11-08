@@ -121,12 +121,12 @@ LOG_API_LIST = [
     {
         "id": "vip",
         "name": "VIP Log",
-        "desc": "site-viphesab · log=1",
+        "desc": "VIP Log",
     },
     {
         "id": "cuyum",
         "name": "LogCuyum",
-        "desc": "logcuyum.pythonanywhere",
+        "desc": "LogCuyum",
     },
 ]
 
@@ -1328,14 +1328,14 @@ def log_api_name(pref=None):
         return "VIP Log"
     if pref == "cuyum":
         return "LogCuyum"
-    return "Otomatik (sırayla dene)"
+    return "Otomatik"
 
 def log_api_kb(user_id):
     cur = log_api_pref(user_id)
     mk = InlineKeyboardMarkup(row_width=1)
     opts = [
-        ("auto", "🔄 Otomatik (sırayla dene)"),
-        ("vip", "⚡ VIP Log · site-viphesab"),
+        ("auto", "🔄 Otomatik"),
+        ("vip", "⚡ VIP Log"),
         ("cuyum", "📂 LogCuyum"),
     ]
     for key, label in opts:
@@ -5860,79 +5860,133 @@ def log_fetch(domain, limit=None, api_choice=None):
             choice = "auto"
         print(f"[LOG] choice={choice} domain={domain}")
 
-        # 1) LogCuyum (seciliyse veya auto)
-        if choice in ("auto", "cuyum"):
+        def _lines_from_payload(text, src_name):
+            parsed = _parse_payload(text, src_name)
+            if not parsed:
+                return None, None
+            status, payload = parsed
+            if status == "OK" and payload and str(payload).strip():
+                return str(payload).strip(), None
+            if status == "ERR":
+                return None, payload
+            return None, None  # EMPTY
+
+        def _fetch_cuyum():
             try:
                 url_new = LOG_API_NEW + requests.utils.quote(domain, safe="")
                 r = requests.get(url_new, headers=headers, timeout=(10, 60), verify=False)
                 print(f"[LOG CUYUM] {domain} status={r.status_code} len={len(r.text or '')}")
                 if r.status_code == 200 and (r.text or "").strip():
-                    parsed = _parse_payload(r.text, "LogCuyum")
-                    if parsed:
-                        status, payload = parsed
-                        if status == "OK" and payload and payload.strip():
-                            return True, payload
-                        if status == "ERR" and choice == "cuyum":
-                            return False, payload
-                        # auto ise VIP'e dus
+                    body, err = _lines_from_payload(r.text, "LogCuyum")
+                    return body, err
+                return None, None
             except Exception as e:
                 print(f"[LOG CUYUM] fail: {e}")
-                if choice == "cuyum":
-                    return False, f"❌ LogCuyum hata: <code>{html.escape(str(e)[:150])}</code>"
+                return None, f"❌ LogCuyum: <code>{html.escape(str(e)[:120])}</code>"
 
-        # Sadece cuyum istendiyse ve basarisiz — cik
-        if choice == "cuyum":
-            return False, f"❌ <b>{domain}</b> için LogCuyum kaydı yok."
+        def _fetch_vip():
+            try:
+                params = {"url": domain, "log": "1", "auth": LOG_AUTH}
+                if limit is not None:
+                    params["limit"] = str(limit)
+                session = requests.Session()
 
-        # 2) VIP Log — site-viphesab (cookie challenge destekli)
-        if choice not in ("auto", "vip"):
-            return False, "❌ Geçersiz log API seçimi."
-        params = {"url": domain, "log": "1", "auth": LOG_AUTH}
+                def _do_get(prms, tries=3):
+                    last_err = None
+                    for attempt in range(1, tries + 1):
+                        try:
+                            return session.get(LOG_API_BASE, params=prms, headers=headers, timeout=(15, 120))
+                        except requests.exceptions.Timeout as e:
+                            last_err = e
+                            time.sleep(1.5 * attempt)
+                        except requests.exceptions.ConnectionError as e:
+                            last_err = e
+                            time.sleep(1.5 * attempt)
+                    if last_err:
+                        raise last_err
+                    raise requests.exceptions.Timeout("log api")
+
+                r = _do_get(params)
+                print(f"[LOG VIP] {domain} status={r.status_code} len={len(r.text or '')}")
+                text = (r.text or "").strip()
+                if not text:
+                    return None, None
+                low = text.lower()
+                if "yetkisiz" in low or "unauthorized" in low or "auth parametre" in low:
+                    return None, "❌ VIP Log yetkisiz. Auth anahtarı geçersiz."
+                if "__test" in text or "slowAES" in text or "toNumbers" in text:
+                    if not _log_solve_cookie(session, text):
+                        return None, "❌ VIP Log koruması aşılamadı (cookie)."
+                    params_retry = dict(params)
+                    params_retry["i"] = "1"
+                    r = _do_get(params_retry)
+                    text = (r.text or "").strip()
+                    if not text:
+                        return None, None
+                body, err = _lines_from_payload(text, "VIP Log")
+                return body, err
+            except requests.exceptions.Timeout:
+                return None, "⏰ VIP Log zaman aşımı."
+            except requests.exceptions.ConnectionError:
+                return None, "🌐 VIP Log bağlantı hatası."
+            except Exception as e:
+                print(f"[LOG VIP] fail: {e}")
+                return None, f"❌ VIP Log: <code>{html.escape(str(e)[:120])}</code>"
+
+        results = []  # [(name, body)]
+        errors = []
+
+        if choice in ("auto", "cuyum"):
+            body, err = _fetch_cuyum()
+            if body:
+                results.append(("LogCuyum", body))
+            elif err:
+                errors.append(err)
+
+        if choice in ("auto", "vip"):
+            body, err = _fetch_vip()
+            if body:
+                results.append(("VIP Log", body))
+            elif err:
+                errors.append(err)
+
+        if not results:
+            if choice == "cuyum":
+                return False, errors[0] if errors else f"❌ <b>{domain}</b> için LogCuyum kaydı yok."
+            if choice == "vip":
+                return False, errors[0] if errors else f"❌ <b>{domain}</b> için VIP Log kaydı yok."
+            return False, errors[0] if errors else f"❌ <b>{domain}</b> için kayıt bulunamadı."
+
+        # Tek kaynak
+        if len(results) == 1:
+            name, body = results[0]
+            if limit is not None:
+                body = "\n".join(body.splitlines()[: int(limit)])
+            header = f"# Kaynak: {name}\n# Domain: {domain}\n"
+            return True, header + body
+
+        # Otomatik: iki API birlesik (tekrarsiz)
+        seen = set()
+        merged = []
+        meta_lines = [f"# Domain: {domain}", f"# Kaynaklar: {', '.join(n for n,_ in results)}"]
+        for name, body in results:
+            meta_lines.append(f"# --- {name} ---")
+            for ln in body.splitlines():
+                s = ln.strip()
+                if not s or s.startswith("#"):
+                    continue
+                key = s.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(s)
         if limit is not None:
-            params["limit"] = str(limit)
-        session = requests.Session()
-
-        def _do_get(prms, tries=3):
-            last_err = None
-            for attempt in range(1, tries + 1):
-                try:
-                    return session.get(LOG_API_BASE, params=prms, headers=headers, timeout=(15, 120))
-                except requests.exceptions.Timeout as e:
-                    last_err = e
-                    time.sleep(1.5 * attempt)
-                except requests.exceptions.ConnectionError as e:
-                    last_err = e
-                    time.sleep(1.5 * attempt)
-            if last_err:
-                raise last_err
-            raise requests.exceptions.Timeout("log api")
-
-        r = _do_get(params)
-        print(f"[LOG OLD] {domain} status={r.status_code} len={len(r.text or '')}")
-        text = (r.text or "").strip()
-        if not text:
-            return False, f"❌ <b>{domain}</b> için boş cevap."
-        low = text.lower()
-        if "yetkisiz" in low or "unauthorized" in low or "auth parametre" in low:
-            return False, "❌ Log API yetkisiz. Auth anahtarı geçersiz veya süresi dolmuş.\nAdmin: @hackledin"
-        if "__test" in text or "slowAES" in text or "toNumbers" in text:
-            if not _log_solve_cookie(session, text):
-                return False, "❌ API koruması aşılamadı (cookie)."
-            params_retry = dict(params)
-            params_retry["i"] = "1"
-            r = _do_get(params_retry)
-            text = (r.text or "").strip()
-            if not text:
-                return False, f"❌ <b>{domain}</b> için boş cevap."
-        parsed = _parse_payload(text, "Legacy")
-        if not parsed:
+            merged = merged[: int(limit)]
+        if not merged:
             return False, f"❌ <b>{domain}</b> için kayıt bulunamadı."
-        status, payload = parsed
-        if status == "OK" and payload and str(payload).strip():
-            return True, payload
-        if status == "ERR":
-            return False, payload
-        return False, f"❌ <b>{domain}</b> için kayıt bulunamadı."
+        out = "\n".join(meta_lines) + "\n\n" + "\n".join(merged)
+        return True, out
+
     except requests.exceptions.Timeout:
         return False, "⏰ API zaman aşımı (sunucu yavaş). Biraz bekleyip tekrar dene."
     except requests.exceptions.ConnectionError:
