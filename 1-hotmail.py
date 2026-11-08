@@ -5855,6 +5855,64 @@ def log_fetch(domain, limit=None):
         return False, f"❌ Hata: <code>{html.escape(str(e)[:200])}</code>"
 
 
+
+def safe_send_document(bot_instance, chat_id, path_or_bytes, filename, caption="", parse_mode="HTML", max_retries=4):
+    """Telegram dosya gonder — ConnectionReset / buyuk dosya dayanikli."""
+    from io import BytesIO
+    # Telegram bot limit ~50MB; guvenli limit
+    MAX_PART = 45 * 1024 * 1024
+
+    if isinstance(path_or_bytes, (bytes, bytearray)):
+        raw = bytes(path_or_bytes)
+    else:
+        with open(path_or_bytes, "rb") as fh:
+            raw = fh.read()
+
+    def _send_one(blob, name, cap):
+        last = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                bio = BytesIO(blob)
+                bio.name = name
+                bot_instance.send_document(
+                    chat_id, bio, caption=cap[:1024] if cap else None, parse_mode=parse_mode
+                )
+                return True, None
+            except Exception as e:
+                last = e
+                err = str(e).lower()
+                # baglanti / timeout — bekle tekrar dene
+                if any(x in err for x in ("connection", "reset", "timed out", "timeout", "broken pipe", "ssl")):
+                    time.sleep(1.2 * attempt)
+                    continue
+                # baska hata — tekrar deneme
+                if attempt < max_retries:
+                    time.sleep(0.8 * attempt)
+                    continue
+                return False, e
+        return False, last
+
+    # tek parca yeter
+    if len(raw) <= MAX_PART:
+        ok, err = _send_one(raw, filename, caption)
+        return ok, err
+
+    # buyuk dosya — parcala
+    total_parts = (len(raw) + MAX_PART - 1) // MAX_PART
+    base = filename.rsplit(".", 1)
+    stem = base[0] if base else filename
+    ext = ("." + base[1]) if len(base) > 1 else ".txt"
+    for i in range(total_parts):
+        chunk = raw[i * MAX_PART:(i + 1) * MAX_PART]
+        part_name = f"{stem}_part{i+1}of{total_parts}{ext}"
+        cap = caption if i == 0 else f"📁 Devam · parça {i+1}/{total_parts}"
+        ok, err = _send_one(chunk, part_name, cap)
+        if not ok:
+            return False, err
+        time.sleep(0.6)
+    return True, None
+
+
 def log_process(msg, bot_instance):
     uid = msg.from_user.id
     username = msg.from_user.username or ""
@@ -5932,21 +5990,32 @@ def log_process(msg, bot_instance):
         f"📁 Sonuç TXT dosyasında"
     )
     try:
-        with open(fname, "rb") as f:
-            bot_instance.send_document(msg.chat.id, f, caption=caption, parse_mode="HTML")
-        try:
-            bot_instance.delete_message(msg.chat.id, wait.message_id)
-        except:
-            pass
-    except Exception as e:
-        bot_instance.send_message(msg.chat.id, f"❌ Dosya gönderilemedi: {e}", parse_mode="HTML")
+        ok, err = safe_send_document(
+            bot_instance, msg.chat.id, fname, filename=fname, caption=caption, parse_mode="HTML"
+        )
+        if not ok:
+            # son care: kisa ozet + ilk satirlar metin olarak
+            preview = "\n".join((data or "").splitlines()[:30])
+            bot_instance.send_message(
+                msg.chat.id,
+                f"❌ Dosya gönderilemedi (yeniden dene).\n"
+                f"<code>{html.escape(str(err)[:120])}</code>\n\n"
+                f"📄 Önizleme ({line_count} satır):\n"
+                f"<pre>{html.escape(preview[:3500])}</pre>",
+                parse_mode="HTML",
+            )
+        else:
+            try:
+                bot_instance.delete_message(msg.chat.id, wait.message_id)
+            except Exception:
+                pass
+            print(f"[LOG] OK | {get_user_name(uid)} | {domain} | {line_count} satır")
     finally:
         if os.path.exists(fname):
             try:
                 os.remove(fname)
-            except:
+            except Exception:
                 pass
-    print(f"[LOG] OK | {get_user_name(uid)} | {domain} | {line_count} satır")
 
 def turkey_kb(user_id):
     mk = InlineKeyboardMarkup(row_width=2)
