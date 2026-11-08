@@ -115,6 +115,21 @@ LOG_AUTH = "ganyotcuvipperlogapi"
 # Yeni Log API (oncelikli)
 LOG_API_NEW = "https://logcuyum.pythonanywhere.com/log/site?site="
 
+# Log API listesi (kullanici secer)
+# id: vip | cuyum | auto
+LOG_API_LIST = [
+    {
+        "id": "vip",
+        "name": "VIP Log",
+        "desc": "site-viphesab · log=1",
+    },
+    {
+        "id": "cuyum",
+        "name": "LogCuyum",
+        "desc": "logcuyum.pythonanywhere",
+    },
+]
+
 
 # ── Vesika Sorgu (sadece yildiz, free yok) ──
 VESIKA_PACKAGE_5 = 5
@@ -290,6 +305,7 @@ def db_init():
         ("premium_lmnx_date", "TEXT DEFAULT ''"),
         ("premium_lmnx_until", "TEXT DEFAULT ''"),
         ("is_verified", "INTEGER DEFAULT 0"),
+        ("log_api_pref", "TEXT DEFAULT 'auto'"),
     ]:
         try:
             c.execute(f"ALTER TABLE users ADD COLUMN {col} {typedef}")
@@ -1279,6 +1295,56 @@ def api_pref(user_id):
         return int(v)
     except Exception:
         return -1
+
+
+def log_api_pref(user_id):
+    """auto | vip | cuyum"""
+    try:
+        v = db_get(user_id, "log_api_pref")
+        if not v:
+            return "auto"
+        v = str(v).strip().lower()
+        if v in ("auto", "vip", "cuyum", "all", "-1"):
+            if v in ("all", "-1"):
+                return "auto"
+            return v
+        return "auto"
+    except Exception:
+        return "auto"
+
+def set_log_api_pref(user_id, value):
+    try:
+        v = str(value or "auto").strip().lower()
+        if v not in ("auto", "vip", "cuyum"):
+            v = "auto"
+        db_set(user_id, "log_api_pref", v)
+    except Exception:
+        pass
+
+def log_api_name(pref=None):
+    if pref is None:
+        pref = "auto"
+    if pref == "vip":
+        return "VIP Log"
+    if pref == "cuyum":
+        return "LogCuyum"
+    return "Otomatik (sırayla dene)"
+
+def log_api_kb(user_id):
+    cur = log_api_pref(user_id)
+    mk = InlineKeyboardMarkup(row_width=1)
+    opts = [
+        ("auto", "🔄 Otomatik (sırayla dene)"),
+        ("vip", "⚡ VIP Log · site-viphesab"),
+        ("cuyum", "📂 LogCuyum"),
+    ]
+    for key, label in opts:
+        ico = "✅" if cur == key else "◻️"
+        style = "success" if cur == key else "primary"
+        mk.add(_btn(f"{ico} {label}", f"setlogapi_{key}", style))
+    mk.add(_btn("🔍 Domain Log Çek", "log_search", "success"))
+    mk.add(_btn("◀️ Geri", "tool_log", "danger"))
+    return mk
 
 # ══════════════════════════════════════════════════════════════
 
@@ -5649,12 +5715,17 @@ def tools_kb(user_id):
 def log_kb(user_id):
     mk = InlineKeyboardMarkup(row_width=1)
     durum = get_log_limit_text(user_id)
+    api_n = log_api_name(log_api_pref(user_id))
     if is_premium_log(user_id) or user_id == ADMIN_ID:
         mk.add(_btn(f"LOG Premium Aktif — {durum}", "noop"))
+        mk.add(_btn(f"🔌 API: {api_n}", "noop"))
         mk.add(_btn("🔍 Domain Log Çek", "log_search", "primary"))
+        mk.add(_btn("⚙️ API Değiştir", "log_api_menu", "primary"))
     else:
         mk.add(_btn(f"Hak: {durum}", "noop"))
+        mk.add(_btn(f"🔌 API: {api_n}", "noop"))
         mk.add(_btn("🔍 Domain Log Çek", "log_search", "primary"))
+        mk.add(_btn("⚙️ API Değiştir", "log_api_menu", "primary"))
         mk.add(_btn(f"LOG Premium ({LOG_PRICE}⭐)", "buy_log", "success"))
         mk.add(_btn("🎁 Davet et — Kazan", "ref_panel_log", "success"))
     mk.add(_btn("◀️ Geri", "goto_tools", "danger"))
@@ -5694,8 +5765,8 @@ def _log_solve_cookie(session, html_text):
         return False
 
 
-def log_fetch(domain, limit=None):
-    """Log cek — once yeni API, sonra eski. (True, text) doner."""
+def log_fetch(domain, limit=None, api_choice=None):
+    """Log cek. api_choice: auto|vip|cuyum. (True, text) doner."""
     try:
         domain = (domain or "").strip().lower()
         domain = domain.replace("https://", "").replace("http://", "").replace("www.", "")
@@ -5782,25 +5853,40 @@ def log_fetch(domain, limit=None):
                 text = "\n".join(text.splitlines()[: int(limit)])
             return ("OK", text)
 
-        # 1) YENI API — logcuyum
-        try:
-            url_new = LOG_API_NEW + requests.utils.quote(domain, safe="")
-            r = requests.get(url_new, headers=headers, timeout=(10, 60), verify=False)
-            print(f"[LOG NEW] {domain} status={r.status_code} len={len(r.text or '')}")
-            if r.status_code == 200 and (r.text or "").strip():
-                parsed = _parse_payload(r.text, "LogCuyum")
-                if parsed:
-                    status, payload = parsed
-                    if status == "OK" and payload and payload.strip():
-                        return True, payload
-                    if status == "ERR":
-                        # yeni api hata verdi — eskiye dus
-                        print(f"[LOG NEW] err payload, fallback old")
-                    # EMPTY → eskiye dene
-        except Exception as e:
-            print(f"[LOG NEW] fail: {e}")
+        choice = str(api_choice or "auto").strip().lower()
+        if choice in ("all", "-1", ""):
+            choice = "auto"
+        if choice not in ("auto", "vip", "cuyum"):
+            choice = "auto"
+        print(f"[LOG] choice={choice} domain={domain}")
 
-        # 2) ESKI API — site-viphesab (cookie challenge destekli)
+        # 1) LogCuyum (seciliyse veya auto)
+        if choice in ("auto", "cuyum"):
+            try:
+                url_new = LOG_API_NEW + requests.utils.quote(domain, safe="")
+                r = requests.get(url_new, headers=headers, timeout=(10, 60), verify=False)
+                print(f"[LOG CUYUM] {domain} status={r.status_code} len={len(r.text or '')}")
+                if r.status_code == 200 and (r.text or "").strip():
+                    parsed = _parse_payload(r.text, "LogCuyum")
+                    if parsed:
+                        status, payload = parsed
+                        if status == "OK" and payload and payload.strip():
+                            return True, payload
+                        if status == "ERR" and choice == "cuyum":
+                            return False, payload
+                        # auto ise VIP'e dus
+            except Exception as e:
+                print(f"[LOG CUYUM] fail: {e}")
+                if choice == "cuyum":
+                    return False, f"❌ LogCuyum hata: <code>{html.escape(str(e)[:150])}</code>"
+
+        # Sadece cuyum istendiyse ve basarisiz — cik
+        if choice == "cuyum":
+            return False, f"❌ <b>{domain}</b> için LogCuyum kaydı yok."
+
+        # 2) VIP Log — site-viphesab (cookie challenge destekli)
+        if choice not in ("auto", "vip"):
+            return False, "❌ Geçersiz log API seçimi."
         params = {"url": domain, "log": "1", "auth": LOG_AUTH}
         if limit is not None:
             params["limit"] = str(limit)
@@ -5933,17 +6019,20 @@ def log_process(msg, bot_instance):
 
     is_prem = is_premium_log(uid) or uid == ADMIN_ID
     limit = None if is_prem else LOG_FREE_MAX
+    pref = log_api_pref(uid)
+    api_n = log_api_name(pref)
 
     wait = bot_instance.reply_to(
         msg,
         f"📂 <b>Log çekiliyor...</b>\n"
         f"🌐 Domain: <code>{domain}</code>\n"
+        f"🔌 API: <b>{api_n}</b>\n"
         f"📊 Limit: {'Sınırsız' if is_prem else f'{LOG_FREE_MAX} satır'}\n"
         f"⏳ Lütfen bekle...",
         parse_mode="HTML"
     )
 
-    success, data = log_fetch(domain, limit=limit)
+    success, data = log_fetch(domain, limit=limit, api_choice=pref)
     if not success:
         try:
             bot_instance.edit_message_text(data, msg.chat.id, wait.message_id, parse_mode="HTML")
@@ -5985,6 +6074,7 @@ def log_process(msg, bot_instance):
         f"🌐 Domain: <code>{domain}</code>\n"
         f"📄 Satır: <b>{line_count}</b>\n"
         f"📊 Hak: {left}\n"
+        f"🔌 API: <b>{api_n}</b>\n"
         f"📅 Veri: <b>2025 & 2026</b> kayıtları\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
         f"📁 Sonuç TXT dosyasında"
@@ -9599,6 +9689,63 @@ def register_handlers(bot_instance):
                 except:
                     bot_instance.send_message(call.message.chat.id, txt, reply_markup=log_kb(uid), parse_mode="HTML")
                 return
+            
+            if data == "log_api_menu":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                cur = log_api_pref(uid)
+                txt = (
+                    "⚙️ <b>LOG API SEÇİMİ</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📌 Aktif: <b>{log_api_name(cur)}</b>\n\n"
+                    "• <b>Otomatik</b> — önce LogCuyum, sonra VIP\n"
+                    "• <b>VIP Log</b> — site-viphesab (log=1)\n"
+                    "• <b>LogCuyum</b> — logcuyum.pythonanywhere\n\n"
+                    "İstediğin kaynağı seç, sonra domain yaz."
+                )
+                try:
+                    bot_instance.edit_message_text(
+                        txt, call.message.chat.id, call.message.message_id,
+                        reply_markup=log_api_kb(uid), parse_mode="HTML",
+                    )
+                except Exception:
+                    bot_instance.send_message(
+                        call.message.chat.id, txt, reply_markup=log_api_kb(uid), parse_mode="HTML",
+                    )
+                return
+
+            if data.startswith("setlogapi_"):
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                key = data.replace("setlogapi_", "", 1).strip().lower()
+                if key not in ("auto", "vip", "cuyum"):
+                    key = "auto"
+                set_log_api_pref(uid, key)
+                try:
+                    bot_instance.answer_callback_query(call.id, f"✅ {log_api_name(key)}", show_alert=False)
+                except Exception:
+                    pass
+                txt = (
+                    "⚙️ <b>LOG API SEÇİMİ</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"✅ Aktif: <b>{log_api_name(key)}</b>\n\n"
+                    "Domain log çekmeye dönebilirsin."
+                )
+                try:
+                    bot_instance.edit_message_text(
+                        txt, call.message.chat.id, call.message.message_id,
+                        reply_markup=log_api_kb(uid), parse_mode="HTML",
+                    )
+                except Exception:
+                    bot_instance.send_message(
+                        call.message.chat.id, txt, reply_markup=log_api_kb(uid), parse_mode="HTML",
+                    )
+                return
+
             if data == "log_search":
                 try: bot_instance.answer_callback_query(call.id)
                 except: pass
