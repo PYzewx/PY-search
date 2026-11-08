@@ -9754,10 +9754,10 @@ def register_handlers(bot_instance):
                     "⚙️ <b>LOG API SEÇİMİ</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n"
                     f"📌 Aktif: <b>{log_api_name(cur)}</b>\n\n"
-                    "• <b>Otomatik</b> — önce LogCuyum, sonra VIP\n"
-                    "• <b>VIP Log</b> — site-viphesab (log=1)\n"
-                    "• <b>LogCuyum</b> — logcuyum.pythonanywhere\n\n"
-                    "İstediğin kaynağı seç, sonra domain yaz."
+                    "• <b>Otomatik</b> — her iki API birden\n"
+                    "• <b>VIP Log</b>\n"
+                    "• <b>LogCuyum</b>\n\n"
+                    "Kaynağı seç, sonra domain yaz."
                 )
                 try:
                     bot_instance.edit_message_text(
