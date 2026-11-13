@@ -139,8 +139,20 @@ VESIKA_PRICE_5 = 99
 VESIKA_PRICE_15 = 249
 VESIKA_PRICE_30 = 449
 
-# ── Türkiye Sorguları (günlük free + bakiye) ──
-TURKEY_FREE_DAILY = 20  # free kullanıcılar için günlük sorgu hakkı
+# ── Türkiye Sorguları (günlük free + bakiye + süre) ──
+TURKEY_FREE_DAILY = 10  # free kullanıcılar günlük sorgu hakkı
+
+# Hak paketleri (adet)
+TURKEY_PKG_20  = (20,  45)   # hak, yıldız
+TURKEY_PKG_45  = (45,  68)
+TURKEY_PKG_65  = (65,  89)
+TURKEY_PKG_85  = (85, 120)
+TURKEY_PKG_100 = (100, 200)
+
+# Süre paketleri (gün, yıldız) — süre boyunca sınırsız
+TURKEY_TIME_3D  = (3,  100)
+TURKEY_TIME_7D  = (7,  300)
+TURKEY_TIME_30D = (30, 500)
 
 
 # ── Mobius Search OSINT ──
@@ -409,7 +421,8 @@ def db_init():
         free_used INTEGER DEFAULT 0,
         free_date TEXT DEFAULT '',
         query_balance INTEGER DEFAULT 0,
-        total_queries INTEGER DEFAULT 0
+        total_queries INTEGER DEFAULT 0,
+        premium_until TEXT DEFAULT ''
     )""")
     c.execute("""CREATE TABLE IF NOT EXISTS turkey_purchases (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3876,12 +3889,17 @@ def vesika_no_balance_text(user_id):
 
 
 # ══════════════════════════════════════════════════════════════
-#  Türkiye Sorgu Hakkı (günlük 20 free + bakiye)
+#  Türkiye Sorgu Hakkı (günlük 10 free + bakiye + süre paketi)
 # ══════════════════════════════════════════════════════════════
 def turkey_init_user(user_id):
     try:
         conn = sqlite3.connect(DB_PATH); c = conn.cursor()
         c.execute("INSERT OR IGNORE INTO turkey_users (user_id) VALUES (?)", (user_id,))
+        # eski DB'ye premium_until kolonu ekle
+        try:
+            c.execute("ALTER TABLE turkey_users ADD COLUMN premium_until TEXT DEFAULT ''")
+        except Exception:
+            pass
         conn.commit(); conn.close()
     except Exception:
         pass
@@ -3892,9 +3910,9 @@ def turkey_get(user_id, col):
         conn = sqlite3.connect(DB_PATH); c = conn.cursor()
         c.execute(f"SELECT {col} FROM turkey_users WHERE user_id=?", (user_id,))
         r = c.fetchone(); conn.close()
-        return r[0] if r else (0 if col != "free_date" else "")
+        return r[0] if r else (0 if col not in ("free_date", "premium_until") else "")
     except Exception:
-        return 0 if col != "free_date" else ""
+        return 0 if col not in ("free_date", "premium_until") else ""
 
 def turkey_set(user_id, col, val):
     try:
@@ -3911,9 +3929,59 @@ def turkey_get_balance(user_id):
 def turkey_add_balance(user_id, amount):
     turkey_set(user_id, "query_balance", turkey_get_balance(user_id) + int(amount))
 
-def turkey_get_free_left(user_id):
-    """Günlük free kalan hak (admin sınırsız)."""
+def turkey_has_premium(user_id):
+    """Süre paketi aktif mi?"""
     if user_id == ADMIN_ID:
+        return True
+    until = (turkey_get(user_id, "premium_until") or "").strip()
+    if not until:
+        return False
+    try:
+        dt = datetime.strptime(until[:19], "%Y-%m-%d %H:%M:%S")
+        return dt > datetime.now()
+    except Exception:
+        try:
+            dt = datetime.strptime(until[:10], "%Y-%m-%d")
+            return dt >= datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        except Exception:
+            return False
+
+def turkey_premium_left_text(user_id):
+    until = (turkey_get(user_id, "premium_until") or "").strip()
+    if not until:
+        return ""
+    try:
+        dt = datetime.strptime(until[:19], "%Y-%m-%d %H:%M:%S")
+        left = dt - datetime.now()
+        if left.total_seconds() <= 0:
+            return ""
+        days = left.days
+        hours = left.seconds // 3600
+        if days > 0:
+            return f"{days}g {hours}s"
+        mins = (left.seconds % 3600) // 60
+        return f"{hours}s {mins}dk"
+    except Exception:
+        return until[:16]
+
+def turkey_set_premium_days(user_id, days):
+    """Süre paketini uzat (üstüne ekle)."""
+    turkey_init_user(user_id)
+    base = datetime.now()
+    until = (turkey_get(user_id, "premium_until") or "").strip()
+    if until:
+        try:
+            cur = datetime.strptime(until[:19], "%Y-%m-%d %H:%M:%S")
+            if cur > base:
+                base = cur
+        except Exception:
+            pass
+    new_until = (base + __import__("datetime").timedelta(days=int(days))).strftime("%Y-%m-%d %H:%M:%S")
+    turkey_set(user_id, "premium_until", new_until)
+    return new_until
+
+def turkey_get_free_left(user_id):
+    if user_id == ADMIN_ID or turkey_has_premium(user_id):
         return 999999
     today = datetime.now().strftime("%Y-%m-%d")
     free_date = turkey_get(user_id, "free_date") or ""
@@ -3925,13 +3993,22 @@ def turkey_get_free_left(user_id):
 def turkey_can_query(user_id):
     if user_id == ADMIN_ID:
         return True
+    if turkey_has_premium(user_id):
+        return True
     if turkey_get_free_left(user_id) > 0:
         return True
     return turkey_get_balance(user_id) > 0
 
 def turkey_use_query(user_id):
-    """1 sorgu düş. Admin: düşmez. Önce free, sonra bakiye."""
+    """1 sorgu düş. Admin / süre paketi: düşmez. Önce free, sonra bakiye."""
     if user_id == ADMIN_ID:
+        return True
+    if turkey_has_premium(user_id):
+        try:
+            total = int(turkey_get(user_id, "total_queries") or 0)
+            turkey_set(user_id, "total_queries", total + 1)
+        except Exception:
+            pass
         return True
     today = datetime.now().strftime("%Y-%m-%d")
     free_date = turkey_get(user_id, "free_date") or ""
@@ -3956,11 +4033,34 @@ def turkey_use_query(user_id):
     return True
 
 def turkey_status_text(user_id):
+    """Canlı sayaç metni."""
     if user_id == ADMIN_ID:
         return "👑 Admin — <b>Sınırsız</b>"
+    if turkey_has_premium(user_id):
+        left = turkey_premium_left_text(user_id)
+        return f"⭐ Süre paketi aktif — kalan: <b>{left}</b> (sınırsız sorgu)"
     free_left = turkey_get_free_left(user_id)
     bal = turkey_get_balance(user_id)
-    return f"🆓 Günlük free: <b>{free_left}/{TURKEY_FREE_DAILY}</b> | 💰 Bakiye: <b>{bal}</b>"
+    return (
+        f"🆓 Günlük free: <b>{free_left}/{TURKEY_FREE_DAILY}</b> | "
+        f"💰 Bakiye: <b>{bal}</b>"
+    )
+
+def turkey_packages_kb():
+    mk = InlineKeyboardMarkup(row_width=1)
+    mk.add(_sep("📦 HAK PAKETLERİ"))
+    mk.add(_btn(f"📦 20 hak — 45 ⭐", "turkey_buy_q_20", "primary"))
+    mk.add(_btn(f"📦 45 hak — 68 ⭐", "turkey_buy_q_45", "success"))
+    mk.add(_btn(f"📦 65 hak — 89 ⭐", "turkey_buy_q_65", "primary"))
+    mk.add(_btn(f"📦 85 hak — 120 ⭐", "turkey_buy_q_85", "success"))
+    mk.add(_btn(f"📦 100 hak — 200 ⭐", "turkey_buy_q_100", "danger"))
+    mk.add(_sep("⏱ SÜRE PAKETLERİ (sınırsız)"))
+    mk.add(_btn(f"⏱ 3 Günlük — 100 ⭐", "turkey_buy_t_3", "primary"))
+    mk.add(_btn(f"⏱ Haftalık (7g) — 300 ⭐", "turkey_buy_t_7", "success"))
+    mk.add(_btn(f"⏱ Aylık (30g) — 500 ⭐", "turkey_buy_t_30", "danger"))
+    mk.add(_btn("💬 Sınırsız için admin'e yaz", "turkey_unlimited_info", "primary"))
+    mk.add(_btn("◀️ Türkiye Menü", "menu_turkey", "primary"))
+    return mk
 
 def turkey_no_balance_text(user_id):
     free_left = turkey_get_free_left(user_id)
@@ -3970,8 +4070,10 @@ def turkey_no_balance_text(user_id):
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"🆓 Günlük free: <b>{free_left}/{TURKEY_FREE_DAILY}</b>\n"
         f"💰 Ek bakiye: <b>{bal}</b>\n\n"
-        "Yarın free hakların yenilenir veya admin bakiye ekleyebilir."
+        "💎 Aşağıdan paket satın alabilirsin.\n"
+        "Yarın free hakların yenilenir."
     )
+
 
 
 
@@ -5728,12 +5830,6 @@ for _k, (_title, _url, _ptype, _hint) in APILER.items():
         "url_template": _url,
         "hint": _hint,
     }
-# Vesika ayrı (ücretli) — eokul endpoint
-TURKIYE_API["vesika"] = {
-    "path": "https://api.ajaxsystems.fun/eokul.php?tc={tc}",
-    "icon": "🪪", "tr": "Vesika (E-Okul)", "en": "ID Photo", "ar": "صورة",
-    "params": ["tc"], "paid": True, "url_template": "https://api.ajaxsystems.fun/eokul.php?tc={tc}",
-}
 
 
 def turkey_request(url, timeout=(10, 45)):
@@ -6319,8 +6415,8 @@ def turkey_kb(user_id):
     def lbl(k):
         cfg = TURKIYE_API.get(k, {})
         return f"{cfg.get('icon','🔍')} {cfg.get(lang(user_id), cfg.get('tr', k))}"
-    # durum satırı
     st = turkey_status_text(user_id)
+    mk.add(_sep("📊 " + st.replace("<b>", "").replace("</b>", "")[:40]))
     mk.add(_sep("👤 KİMLİK"))
     mk.add(
         _btn(lbl("tc"), "tr_tc", "primary"),
@@ -6345,8 +6441,8 @@ def turkey_kb(user_id):
     )
     mk.add(_btn(lbl("adaparsel"), "tr_adaparsel", "success"))
     mk.add(_btn(lbl("adres"), "tr_adres", "primary"))
-    mk.add(_btn("🪪 Vesika Sorgu ⭐", "tr_vesika", "danger"))
-    mk.add(_sep(f"📊 {st.replace('<b>','').replace('</b>','')}"))
+    mk.add(_sep("💎 BAKİYE"))
+    mk.add(_btn("💎 Bakiye / Paket Satın Al", "turkey_packages", "success"))
     mk.add(
         _btn("Araçlar", "goto_tools", "primary"),
         _btn("🏠 Ana Menü", "goto_home", "success"),
@@ -10694,57 +10790,42 @@ def register_handlers(bot_instance):
                     bot_instance.answer_callback_query(call.id)
                 except Exception:
                     pass
-                if TURKIYE_MAINTENANCE and uid != ADMIN_ID:
-                    try:
-                        bot_instance.answer_callback_query(
-                            call.id, "🛠️ Bakımdadır", show_alert=True,
-                        )
-                    except Exception:
-                        pass
-                    bot_instance.send_message(
-                        call.message.chat.id,
-                        "🇹🇷 <b>Türkiye Sorguları</b>\n"
-                        "━━━━━━━━━━━━━━━━━━━━━\n"
-                        "🛠️ <b>Bakımdadır</b>\n\n"
-                        "Bu servis geçici olarak kapalı.",
-                        parse_mode="HTML",
-                    )
-                    return
                 key = data[3:]
-                if key == "vesika" and not vesika_can_query(uid) and uid != ADMIN_ID:
+                # vesika kaldırıldı
+                if key == "vesika":
                     bot_instance.send_message(
                         call.message.chat.id,
-                        vesika_no_balance_text(uid),
-                        reply_markup=vesika_packages_kb(),
+                        "❌ Vesika sorgusu kaldırıldı.\n🎓 E-Okul kullanabilirsiniz.",
+                        reply_markup=turkey_kb(uid),
                         parse_mode="HTML",
                     )
                     return
-                # Ad Soyad → adım adım wizard
+                # Ad Soyad → wizard
                 if key == "adsoyad":
+                    if not turkey_can_query(uid):
+                        bot_instance.send_message(
+                            call.message.chat.id,
+                            turkey_no_balance_text(uid),
+                            reply_markup=turkey_packages_kb(),
+                            parse_mode="HTML",
+                        )
+                        return
                     _start_adsoyad_wizard(call.message.chat.id, uid, bot_instance)
                     return
-                # diğer sorgular için limit kontrolü
-                if key != "vesika" and not turkey_can_query(uid):
+                if not turkey_can_query(uid):
                     bot_instance.send_message(
                         call.message.chat.id,
                         turkey_no_balance_text(uid),
+                        reply_markup=turkey_packages_kb(),
                         parse_mode="HTML",
                     )
                     return
                 prompt = TURKEY_PROMPTS.get(lang(uid), TURKEY_PROMPTS["tr"]).get(key, s(uid, "enter_val"))
-                ask = s(uid, "tr_ask", prompt=prompt)
-                if key == "vesika":
-                    ask = (
-                        str(prompt) + "\n"
-                        + "━━━━━━━━━━━━━━━━━━━━━\n"
-                        + f"💰 Bakiye: <b>{vesika_get_balance(uid)}</b>\n"
-                        + "🪪 Sonuç fotoğraf olarak gelir."
-                    )
-                else:
-                    ask = str(prompt) + "\n\n" + turkey_status_text(uid)
+                ask = str(prompt) + "\n\n" + turkey_status_text(uid)
                 m = bot_instance.send_message(call.message.chat.id, ask, parse_mode="HTML")
                 register_step(bot_instance, m, lambda m, k=key: _process_turkey(m, k, bot_instance))
                 return
+
             # ── Ad Soyad wizard butonları ──
             if data == "adsoyad_cancel":
                 USER_STATES.pop(uid, None)
@@ -10950,6 +11031,116 @@ def register_handlers(bot_instance):
                 bot_instance.send_message(call.message.chat.id, txt, parse_mode="HTML")
                 return
 
+            # ── Türkiye bakiye / paket ──
+            if data == "turkey_packages":
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                txt = (
+                    "💎 <b>TÜRKİYE SORGU PAKETLERİ</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"{turkey_status_text(uid)}\n\n"
+                    "📦 <b>Hak paketleri</b> (bakiye ekler)\n"
+                    "• 20 hak — 45 ⭐\n"
+                    "• 45 hak — 68 ⭐\n"
+                    "• 65 hak — 89 ⭐\n"
+                    "• 85 hak — 120 ⭐\n"
+                    "• 100 hak — 200 ⭐\n\n"
+                    "⏱ <b>Süre paketleri</b> (süre boyunca sınırsız)\n"
+                    "• 3 Günlük — 100 ⭐\n"
+                    "• Haftalık (7g) — 300 ⭐\n"
+                    "• Aylık (30g) — 500 ⭐\n\n"
+                    "💬 Sınırsız kalıcı hak için admin'e yaz."
+                )
+                try:
+                    bot_instance.edit_message_text(
+                        txt, call.message.chat.id, call.message.message_id,
+                        reply_markup=turkey_packages_kb(), parse_mode="HTML",
+                    )
+                except Exception:
+                    bot_instance.send_message(
+                        call.message.chat.id, txt,
+                        reply_markup=turkey_packages_kb(), parse_mode="HTML",
+                    )
+                return
+
+            if data == "turkey_unlimited_info":
+                try:
+                    bot_instance.answer_callback_query(call.id, "Admin ile iletişime geç", show_alert=True)
+                except Exception:
+                    pass
+                bot_instance.send_message(
+                    call.message.chat.id,
+                    "💬 <b>Sınırsız Türkiye sorgu</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    "Kalıcı / özel paket için admin'e yaz.\n"
+                    f"Admin ID: <code>{ADMIN_ID}</code>",
+                    parse_mode="HTML",
+                )
+                return
+
+            if data.startswith("turkey_buy_q_"):
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                qty_s = data.replace("turkey_buy_q_", "")
+                pkg_map = {
+                    "20": TURKEY_PKG_20,
+                    "45": TURKEY_PKG_45,
+                    "65": TURKEY_PKG_65,
+                    "85": TURKEY_PKG_85,
+                    "100": TURKEY_PKG_100,
+                }
+                if qty_s not in pkg_map:
+                    bot_instance.send_message(call.message.chat.id, "❌ Geçersiz paket")
+                    return
+                qty, stars = pkg_map[qty_s]
+                try:
+                    bot_instance.send_invoice(
+                        call.message.chat.id,
+                        title=f"Türkiye {qty} Sorgu Hakkı",
+                        description=f"{qty} adet Türkiye sorgu bakiyesi",
+                        invoice_payload=f"turkey_q_{qty_s}",
+                        provider_token="",
+                        currency="XTR",
+                        prices=[LabeledPrice(label=f"{qty} TR Sorgu", amount=stars)],
+                    )
+                except Exception as e:
+                    bot_instance.send_message(call.message.chat.id, f"❌ Fatura hatası: {e}")
+                return
+
+            if data.startswith("turkey_buy_t_"):
+                try:
+                    bot_instance.answer_callback_query(call.id)
+                except Exception:
+                    pass
+                days_s = data.replace("turkey_buy_t_", "")
+                pkg_map = {
+                    "3": TURKEY_TIME_3D,
+                    "7": TURKEY_TIME_7D,
+                    "30": TURKEY_TIME_30D,
+                }
+                if days_s not in pkg_map:
+                    bot_instance.send_message(call.message.chat.id, "❌ Geçersiz paket")
+                    return
+                days, stars = pkg_map[days_s]
+                labels = {"3": "3 Günlük", "7": "Haftalık", "30": "Aylık"}
+                try:
+                    bot_instance.send_invoice(
+                        call.message.chat.id,
+                        title=f"Türkiye {labels.get(days_s, days_s)} Sınırsız",
+                        description=f"{days} gün boyunca sınırsız Türkiye sorgu",
+                        invoice_payload=f"turkey_t_{days_s}",
+                        provider_token="",
+                        currency="XTR",
+                        prices=[LabeledPrice(label=f"TR {labels.get(days_s)}", amount=stars)],
+                    )
+                except Exception as e:
+                    bot_instance.send_message(call.message.chat.id, f"❌ Fatura hatası: {e}")
+                return
+
             if data.startswith("mobius_buy_"):
                 pkg = data.replace("mobius_buy_", "")
                 pkg_map = {
@@ -11117,8 +11308,65 @@ def register_handlers(bot_instance):
             return
         username = msg.from_user.username or msg.from_user.first_name or str(uid)
         payload = msg.successful_payment.invoice_payload
-        
-        
+
+        # Türkiye hak / süre paketleri
+        if payload.startswith("turkey_q_"):
+            qty_s = payload.replace("turkey_q_", "")
+            pkg_map = {
+                "20": TURKEY_PKG_20,
+                "45": TURKEY_PKG_45,
+                "65": TURKEY_PKG_65,
+                "85": TURKEY_PKG_85,
+                "100": TURKEY_PKG_100,
+            }
+            if qty_s in pkg_map:
+                qty, stars = pkg_map[qty_s]
+                turkey_add_balance(uid, qty)
+                bal = turkey_get_balance(uid)
+                bot_instance.reply_to(
+                    msg,
+                    "🎉 <b>Ödeme Başarılı!</b>\n"
+                    f"🇹🇷 +{qty} sorgu hakkı\n"
+                    f"💰 Bakiye: <b>{bal}</b>\n"
+                    f"{turkey_status_text(uid)}",
+                    parse_mode="HTML",
+                )
+                try:
+                    bot_instance.send_message(
+                        ADMIN_ID,
+                        f"💰 TR SORGU SATIN ALMA\n👤 @{username}\n📦 {qty} hak — {stars}⭐",
+                    )
+                except Exception:
+                    pass
+            return
+        if payload.startswith("turkey_t_"):
+            days_s = payload.replace("turkey_t_", "")
+            pkg_map = {
+                "3": TURKEY_TIME_3D,
+                "7": TURKEY_TIME_7D,
+                "30": TURKEY_TIME_30D,
+            }
+            if days_s in pkg_map:
+                days, stars = pkg_map[days_s]
+                until = turkey_set_premium_days(uid, days)
+                labels = {"3": "3 Günlük", "7": "Haftalık", "30": "Aylık"}
+                bot_instance.reply_to(
+                    msg,
+                    "🎉 <b>Ödeme Başarılı!</b>\n"
+                    f"⏱ {labels.get(days_s)} sınırsız Türkiye sorgu\n"
+                    f"📅 Bitiş: <b>{until}</b>\n"
+                    f"{turkey_status_text(uid)}",
+                    parse_mode="HTML",
+                )
+                try:
+                    bot_instance.send_message(
+                        ADMIN_ID,
+                        f"💰 TR SÜRE PAKETİ\n👤 @{username}\n📦 {labels.get(days_s)} — {stars}⭐",
+                    )
+                except Exception:
+                    pass
+            return
+
         if payload.startswith("mobius_"):
             pkg = payload.replace("mobius_", "")
             pkg_map = {
@@ -12400,7 +12648,10 @@ def _adsoyad_ilce_kb():
 def _start_adsoyad_wizard(chat_id, uid, bot_instance):
     """Ad Soyad sihirbazını başlat."""
     if not turkey_can_query(uid) and uid != ADMIN_ID:
-        bot_instance.send_message(chat_id, turkey_no_balance_text(uid), parse_mode="HTML")
+        bot_instance.send_message(
+            chat_id, turkey_no_balance_text(uid),
+            reply_markup=turkey_packages_kb(), parse_mode="HTML",
+        )
         return
     USER_STATES[uid] = {
         "action": "adsoyad_wizard",
@@ -12478,10 +12729,16 @@ def _adsoyad_run_query(chat_id, uid, bot_instance, msg=None):
         bot_instance.send_message(chat_id, "❌ Ad ve soyad zorunlu.")
         return
     if not turkey_can_query(uid) and uid != ADMIN_ID:
-        bot_instance.send_message(chat_id, turkey_no_balance_text(uid), parse_mode="HTML")
+        bot_instance.send_message(
+            chat_id, turkey_no_balance_text(uid),
+            reply_markup=turkey_packages_kb(), parse_mode="HTML",
+        )
         return
     if not turkey_use_query(uid):
-        bot_instance.send_message(chat_id, turkey_no_balance_text(uid), parse_mode="HTML")
+        bot_instance.send_message(
+            chat_id, turkey_no_balance_text(uid),
+            reply_markup=turkey_packages_kb(), parse_mode="HTML",
+        )
         return
     qparams = {"ad": ad, "soyad": soyad}
     if il:
@@ -12582,23 +12839,27 @@ def _handle_adsoyad_text(msg, bot_instance):
 
 def _process_turkey(msg, tool, bot_instance):
     uid = msg.from_user.id
-    if TURKIYE_MAINTENANCE and uid != ADMIN_ID:
+    # Ad soyad wizard
+    if tool == "adsoyad":
+        if not turkey_can_query(uid):
+            bot_instance.reply_to(
+                msg, turkey_no_balance_text(uid),
+                reply_markup=turkey_packages_kb(), parse_mode="HTML",
+            )
+            return
+        _start_adsoyad_wizard(msg.chat.id, uid, bot_instance)
+        return
+    if tool == "vesika":
         bot_instance.reply_to(
             msg,
-            "🇹🇷 <b>Türkiye Sorguları</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
-            "🛠️ <b>Bakımdadır</b>\n\n"
-            "Bu servis geçici olarak kapalı.",
+            "❌ Vesika sorgusu kaldırıldı.\n🎓 E-Okul kullanabilirsiniz.",
+            reply_markup=turkey_kb(uid),
             parse_mode="HTML",
         )
         return
-    # Ad soyad artık wizard ile çalışır
-    if tool == "adsoyad":
-        _start_adsoyad_wizard(msg.chat.id, uid, bot_instance)
-        return
     param = (msg.text or "").strip()
     l = lang(uid)
-    if tool in ("tc", "tcpro", "aile", "ailepro", "sulale", "tcgsm", "eokul", "tapu", "adres", "vesika"):
+    if tool in ("tc", "tcpro", "aile", "ailepro", "sulale", "tcgsm", "eokul", "tapu", "adres"):
         if not (param.isdigit() and len(param) == 11):
             bot_instance.reply_to(msg, s(uid, "invalid_tc"))
             return
@@ -12613,21 +12874,12 @@ def _process_turkey(msg, tool, bot_instance):
             bot_instance.reply_to(msg, "❌ Format: İl,İlçe")
             return
 
-    # Vesika: sadece bakiyeli
-    if tool == "vesika":
-        if not vesika_can_query(uid):
-            bot_instance.reply_to(
-                msg,
-                vesika_no_balance_text(uid),
-                reply_markup=vesika_packages_kb(),
-                parse_mode="HTML",
-            )
-            return
-    else:
-        # Genel Türkiye sorgu hakkı (günlük 20 free + bakiye)
-        if not turkey_can_query(uid):
-            bot_instance.reply_to(msg, turkey_no_balance_text(uid), parse_mode="HTML")
-            return
+    if not turkey_can_query(uid):
+        bot_instance.reply_to(
+            msg, turkey_no_balance_text(uid),
+            reply_markup=turkey_packages_kb(), parse_mode="HTML",
+        )
+        return
 
     sm = bot_instance.reply_to(msg, s(uid, "processing"))
     api_cfg = TURKIYE_API.get(tool)
@@ -12647,177 +12899,20 @@ def _process_turkey(msg, tool, bot_instance):
     else:
         qparams = {"tc": param}
 
-    # Hak düş (vesika kendi bakiyesini kullanır)
-    if tool != "vesika":
-        if not turkey_use_query(uid):
-            try:
-                bot_instance.edit_message_text(turkey_no_balance_text(uid), msg.chat.id, sm.message_id, parse_mode="HTML")
-            except Exception:
-                bot_instance.reply_to(msg, turkey_no_balance_text(uid), parse_mode="HTML")
-            return
-
-    url = turkey_build_url(tool, qparams)
-
-    # Vesika: fotoğraf cevabi (JSON: durum + veri.vesika base64 JPEG)
-    if tool == "vesika":
+    if not turkey_use_query(uid):
         try:
-            import base64
-            import io
-            r = turkey_request(url, timeout=(10, 45))
-            ctype = (r.headers.get("Content-Type") or "").lower()
-            photo_bytes = None
-            caption_extra = ""
-            if r.status_code != 200:
-                bot_instance.edit_message_text(f"❌ API HTTP {r.status_code}", msg.chat.id, sm.message_id)
-                return
-            # dogrudan binary gorsel
-            if "image/" in ctype and r.content and len(r.content) > 200:
-                photo_bytes = r.content
-            else:
-                data = None
-                try:
-                    data = r.json()
-                except Exception:
-                    data = None
-                if isinstance(data, dict):
-                    try:
-                        data = _lmnx_sanitize(data)
-                    except Exception:
-                        pass
-                    durum = str(data.get("durum") or data.get("status") or "").lower()
-                    if durum in ("basarisiz", "error", "fail", "not_found", "hata"):
-                        err = data.get("hata") or data.get("message") or data.get("msg") or "Kayıt bulunamadı."
-                        bot_instance.edit_message_text(f"❌ {err}", msg.chat.id, sm.message_id)
-                        return
-                    # gorsel alanlarini ara (ust seviye + veri/data ic ice)
-                    candidates = [data]
-                    for nest_key in ("veri", "data", "result", "results", "info", "kayit"):
-                        nested = data.get(nest_key)
-                        if isinstance(nested, dict):
-                            candidates.append(nested)
-                        elif isinstance(nested, list):
-                            for it in nested:
-                                if isinstance(it, dict):
-                                    candidates.append(it)
-
-                    def _decode_b64_image(val):
-                        if not val or not isinstance(val, str):
-                            return None
-                        s = val.strip()
-                        if s.startswith("http://") or s.startswith("https://"):
-                            try:
-                                ir = requests.get(s, timeout=25, verify=False)
-                                if ir.status_code == 200 and len(ir.content) > 200:
-                                    return ir.content
-                            except Exception:
-                                return None
-                            return None
-                        if "base64," in s:
-                            s = s.split("base64,", 1)[1].strip()
-                        # whitespace / newlines temizle
-                        s = "".join(s.split())
-                        # padding
-                        pad = (-len(s)) % 4
-                        if pad:
-                            s += "=" * pad
-                        try:
-                            raw = base64.b64decode(s, validate=False)
-                        except Exception:
-                            try:
-                                raw = base64.b64decode(s + "==")
-                            except Exception:
-                                return None
-                        if not raw or len(raw) < 200:
-                            return None
-                        # JPEG / PNG / WEBP imza kontrol (veya yeterli boyut)
-                        if raw[:3] == b"\xff\xd8\xff" or raw[:8] == b"\x89PNG\r\n\x1a\n" or raw[:4] == b"RIFF":
-                            return raw
-                        if len(raw) > 1000:
-                            return raw
-                        return None
-
-                    img_keys = (
-                        "vesika", "foto", "photo", "image", "img", "resim",
-                        "base64", "b64", "picture", "pic", "file", "content",
-                    )
-                    for obj in candidates:
-                        for key in img_keys:
-                            val = obj.get(key)
-                            if not val:
-                                continue
-                            photo_bytes = _decode_b64_image(val if isinstance(val, str) else str(val))
-                            if photo_bytes:
-                                break
-                        if photo_bytes:
-                            break
-                        # bazen dogrudan 'url' alani
-                        if not photo_bytes and isinstance(obj.get("url"), str):
-                            photo_bytes = _decode_b64_image(obj["url"])
-                            if photo_bytes:
-                                break
-
-                    # caption bilgileri (veri dict oncelikli)
-                    info_obj = None
-                    for nest_key in ("veri", "data", "result", "info"):
-                        if isinstance(data.get(nest_key), dict):
-                            info_obj = data[nest_key]
-                            break
-                    if info_obj is None:
-                        info_obj = data
-                    skip = {
-                        "vesika", "foto", "photo", "image", "img", "resim", "data", "base64",
-                        "url", "auth", "developer", "b64", "picture", "pic", "file", "content",
-                    }
-                    bits = []
-                    for k, v in info_obj.items():
-                        if str(k).lower() in skip or v is None:
-                            continue
-                        if isinstance(v, (str, int, float)) and str(v).strip() and len(str(v)) < 200:
-                            bits.append(f"{k}: {v}")
-                    if bits:
-                        caption_extra = "\n".join(bits[:10])
-
-                # ham JPEG body
-                if photo_bytes is None and r.content and len(r.content) > 500:
-                    if r.content[:3] == b"\xff\xd8\xff" or r.content[:8] == b"\x89PNG\r\n\x1a\n":
-                        photo_bytes = r.content
-
-            if not photo_bytes:
-                bot_instance.edit_message_text("❌ Vesika bulunamadı veya görsel yok.", msg.chat.id, sm.message_id)
-                return
-            if not vesika_use_query(uid):
-                bot_instance.edit_message_text("❌ Bakiye yetersiz.", msg.chat.id, sm.message_id)
-                return
-            buf = io.BytesIO(photo_bytes)
-            # uzanti
-            if photo_bytes[:8] == b"\x89PNG\r\n\x1a\n":
-                buf.name = f"vesika_{param}.png"
-            else:
-                buf.name = f"vesika_{param}.jpg"
-            cap = (
-                f"🪪 <b>VESİKA</b>\n"
-                f"🆔 TC: <code>{param}</code>\n"
-                f"💰 Kalan: <b>{vesika_get_balance(uid)}</b>\n"
-                f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
-                f"🤖 @hackledin"
+            bot_instance.edit_message_text(
+                turkey_no_balance_text(uid), msg.chat.id, sm.message_id,
+                parse_mode="HTML", reply_markup=turkey_packages_kb(),
             )
-            if caption_extra:
-                cap += "\n" + html.escape(caption_extra[:350])
-            bot_instance.send_photo(msg.chat.id, buf, caption=cap[:1024], parse_mode="HTML")
-            try:
-                bot_instance.delete_message(msg.chat.id, sm.message_id)
-            except Exception:
-                pass
-        except Exception as e:
-            print(f"[VESIKA] {e}")
-            import traceback
-            traceback.print_exc()
-            try:
-                bot_instance.edit_message_text(f"❌ Hata: {e}", msg.chat.id, sm.message_id)
-            except Exception:
-                pass
+        except Exception:
+            bot_instance.reply_to(
+                msg, turkey_no_balance_text(uid),
+                reply_markup=turkey_packages_kb(), parse_mode="HTML",
+            )
         return
 
+    url = turkey_build_url(tool, qparams)
 
     data, err = _api_get(url)
     if err:
