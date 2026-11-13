@@ -139,6 +139,9 @@ VESIKA_PRICE_5 = 99
 VESIKA_PRICE_15 = 249
 VESIKA_PRICE_30 = 449
 
+# ── Türkiye Sorguları (günlük free + bakiye) ──
+TURKEY_FREE_DAILY = 20  # free kullanıcılar için günlük sorgu hakkı
+
 
 # ── Mobius Search OSINT ──
 MOBIUS_BASE_URL = "https://mobiusnet.cc.cd"
@@ -401,6 +404,22 @@ def db_init():
     c.execute("CREATE TABLE IF NOT EXISTS mobius_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, package TEXT, queries INTEGER, stars INTEGER, date TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS vesika_users (user_id INTEGER PRIMARY KEY, query_balance INTEGER DEFAULT 0, total_queries INTEGER DEFAULT 0)")
     c.execute("CREATE TABLE IF NOT EXISTS vesika_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, package TEXT, queries INTEGER, stars INTEGER, date TEXT)")
+    c.execute("""CREATE TABLE IF NOT EXISTS turkey_users (
+        user_id INTEGER PRIMARY KEY,
+        free_used INTEGER DEFAULT 0,
+        free_date TEXT DEFAULT '',
+        query_balance INTEGER DEFAULT 0,
+        total_queries INTEGER DEFAULT 0
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS turkey_purchases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        username TEXT,
+        package TEXT,
+        queries INTEGER,
+        stars INTEGER,
+        date TEXT
+    )""")
     c.execute("CREATE TABLE IF NOT EXISTS combo_users (user_id INTEGER PRIMARY KEY, free_used INTEGER DEFAULT 0, query_balance INTEGER DEFAULT 0, total_queries INTEGER DEFAULT 0)")
     c.execute("CREATE TABLE IF NOT EXISTS combo_purchases (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, username TEXT, package TEXT, queries INTEGER, stars INTEGER, date TEXT)")
     c.execute('''CREATE TABLE IF NOT EXISTS referrals (
@@ -3856,6 +3875,105 @@ def vesika_no_balance_text(user_id):
     )
 
 
+# ══════════════════════════════════════════════════════════════
+#  Türkiye Sorgu Hakkı (günlük 20 free + bakiye)
+# ══════════════════════════════════════════════════════════════
+def turkey_init_user(user_id):
+    try:
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO turkey_users (user_id) VALUES (?)", (user_id,))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+def turkey_get(user_id, col):
+    try:
+        turkey_init_user(user_id)
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute(f"SELECT {col} FROM turkey_users WHERE user_id=?", (user_id,))
+        r = c.fetchone(); conn.close()
+        return r[0] if r else (0 if col != "free_date" else "")
+    except Exception:
+        return 0 if col != "free_date" else ""
+
+def turkey_set(user_id, col, val):
+    try:
+        turkey_init_user(user_id)
+        conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+        c.execute(f"UPDATE turkey_users SET {col}=? WHERE user_id=?", (val, user_id))
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+def turkey_get_balance(user_id):
+    return int(turkey_get(user_id, "query_balance") or 0)
+
+def turkey_add_balance(user_id, amount):
+    turkey_set(user_id, "query_balance", turkey_get_balance(user_id) + int(amount))
+
+def turkey_get_free_left(user_id):
+    """Günlük free kalan hak (admin sınırsız)."""
+    if user_id == ADMIN_ID:
+        return 999999
+    today = datetime.now().strftime("%Y-%m-%d")
+    free_date = turkey_get(user_id, "free_date") or ""
+    free_used = int(turkey_get(user_id, "free_used") or 0)
+    if free_date != today:
+        return TURKEY_FREE_DAILY
+    return max(0, TURKEY_FREE_DAILY - free_used)
+
+def turkey_can_query(user_id):
+    if user_id == ADMIN_ID:
+        return True
+    if turkey_get_free_left(user_id) > 0:
+        return True
+    return turkey_get_balance(user_id) > 0
+
+def turkey_use_query(user_id):
+    """1 sorgu düş. Admin: düşmez. Önce free, sonra bakiye."""
+    if user_id == ADMIN_ID:
+        return True
+    today = datetime.now().strftime("%Y-%m-%d")
+    free_date = turkey_get(user_id, "free_date") or ""
+    free_used = int(turkey_get(user_id, "free_used") or 0)
+    if free_date != today:
+        free_used = 0
+        turkey_set(user_id, "free_date", today)
+        turkey_set(user_id, "free_used", 0)
+    if free_used < TURKEY_FREE_DAILY:
+        turkey_set(user_id, "free_used", free_used + 1)
+        turkey_set(user_id, "free_date", today)
+    else:
+        bal = turkey_get_balance(user_id)
+        if bal <= 0:
+            return False
+        turkey_set(user_id, "query_balance", bal - 1)
+    try:
+        total = int(turkey_get(user_id, "total_queries") or 0)
+        turkey_set(user_id, "total_queries", total + 1)
+    except Exception:
+        pass
+    return True
+
+def turkey_status_text(user_id):
+    if user_id == ADMIN_ID:
+        return "👑 Admin — <b>Sınırsız</b>"
+    free_left = turkey_get_free_left(user_id)
+    bal = turkey_get_balance(user_id)
+    return f"🆓 Günlük free: <b>{free_left}/{TURKEY_FREE_DAILY}</b> | 💰 Bakiye: <b>{bal}</b>"
+
+def turkey_no_balance_text(user_id):
+    free_left = turkey_get_free_left(user_id)
+    bal = turkey_get_balance(user_id)
+    return (
+        "❌ <b>Türkiye sorgu hakkın kalmadı!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🆓 Günlük free: <b>{free_left}/{TURKEY_FREE_DAILY}</b>\n"
+        f"💰 Ek bakiye: <b>{bal}</b>\n\n"
+        "Yarın free hakların yenilenir veya admin bakiye ekleyebilir."
+    )
+
+
 
 # ══════════════════════════════════════════════════════════════
 #  MOBIUS SEARCH OSINT
@@ -5575,61 +5693,95 @@ def _admin_mobius_take(msg, bot_instance):
 
 
 # ajax.ink / ajaxsystems.fun — key zorunlu
-TURKIYE_MAINTENANCE = True  # True = kullanıcıya bakımdadır
-TURKIYE_API_KEY = os.getenv("TURKIYE_API_KEY", "ak_67b2972bd51298e4296b7682ad0278afec8cb2b9e491d563").strip()
-TURKIYE_API_BASE = os.getenv("TURKIYE_API_BASE", "https://api.ajax.ink").rstrip("/")
+TURKIYE_MAINTENANCE = False  # True = kullanıcıya bakımdadır
+TURKIYE_API_KEY = os.getenv("TURKIYE_API_KEY", "").strip()
+TURKIYE_API_BASE = os.getenv("TURKIYE_API_BASE", "https://api.ajaxsystems.fun").rstrip("/")
 
-TURKIYE_API = {
-    "tc": {"path": "/tc.php", "icon": "🆔", "tr": "TC Sorgu", "en": "TC Query", "ar": "استعلام TC", "params": ["tc"]},
-    "tcpro": {"path": "/tcpro.php", "icon": "🔍", "tr": "TC Pro Sorgu", "en": "TC Pro", "ar": "TC Pro", "params": ["tc"]},
-    "adsoyad": {"path": "/adsoyad.php", "icon": "👤", "tr": "Ad Soyad", "en": "Name Surname", "ar": "الاسم", "params": ["ad", "soyad"]},
-    "aile": {"path": "/ailepro.php", "icon": "👨‍👩‍👧", "tr": "Aile Sorgu", "en": "Family", "ar": "العائلة", "params": ["tc"]},
-    "ailepro": {"path": "/ailepro.php", "icon": "👨‍👩‍👧‍👦", "tr": "Aile Pro", "en": "Family Pro", "ar": "العائلة Pro", "params": ["tc"]},
-    "sulale": {"path": "/sulale.php", "icon": "🌳", "tr": "Sülale Sorgu", "en": "Lineage", "ar": "النسب", "params": ["tc"]},
-    "tcgsm": {"path": "/tcgsm.php", "icon": "📱", "tr": "TC → GSM", "en": "TC to GSM", "ar": "TC إلى GSM", "params": ["tc"]},
-    "gsmtc": {"path": "/gsmtc.php", "icon": "📞", "tr": "GSM → TC", "en": "GSM to TC", "ar": "GSM إلى TC", "params": ["gsm"]},
-    "adres": {"path": "/adres.php", "icon": "🏠", "tr": "Adres Sorgu", "en": "Address", "ar": "العنوان", "params": ["tc"]},
-    "tapu": {"path": "/tapu.php", "icon": "🏠", "tr": "Tapu Sorgu", "en": "Title Deed", "ar": "الطابو", "params": ["tc"]},
-    "adaparsel": {"path": "/adaparsel.php", "icon": "🗺️", "tr": "Ada Parsel", "en": "Block Parcel", "ar": "القطعة", "params": ["il", "ilce"]},
-    "isyeri": {"path": "/isyeri.php", "icon": "🏢", "tr": "İşyeri Sorgu", "en": "Workplace", "ar": "العمل", "params": ["tc"]},
-    "eokul": {"path": "/eokul.php", "icon": "🎓", "tr": "E-Okul Vesika", "en": "E-School", "ar": "المدرسة", "params": ["tc"]},
-    # Eski solidark (opsiyonel — çalışmazsa eokul kullan)
-    "sgk": {"path": "/tcpro.php", "icon": "🏥", "tr": "SGK / TC Pro", "en": "SGK/TC Pro", "ar": "SGK", "params": ["tc"]},
-    "vesika": {"path": "/eokul.php", "icon": "🪪", "tr": "Vesika (E-Okul)", "en": "ID Photo", "ar": "صورة", "params": ["tc"], "paid": True},
+# Yeni API kombinasyonu (ajaxsystems.fun)
+APILER = {
+    "tc":        ("🆔 TC Sorgu",       "https://api.ajaxsystems.fun/tc.php?tc={tc}",                     "tc",   "TC (11 hane)"),
+    "tcpro":     ("🔍 TC Pro",         "https://api.ajaxsystems.fun/tcpro.php?tc={tc}",                  "tc",   "TC (11 hane)"),
+    "adsoyad":   ("👤 Ad Soyad",       "https://api.ajaxsystems.fun/adsoyad.php?ad={ad}&soyad={soyad}",  "ad",   "Ad Soyad (Ali Veli) veya Ad Soyad,İl,İlçe"),
+    "aile":      ("👨‍👩‍👧 Aile",           "https://api.ajaxsystems.fun/aile.php?tc={tc}",                   "tc",   "TC (11 hane)"),
+    "ailepro":   ("👨‍👩‍👧‍👦 Aile Pro",       "https://api.ajaxsystems.fun/ailepro.php?tc={tc}",                "tc",   "TC (11 hane)"),
+    "sulale":    ("🌳 Sülale",         "https://api.ajaxsystems.fun/sulale.php?tc={tc}",                 "tc",   "TC (11 hane)"),
+    "tcgsm":     ("📱 TC → GSM",       "https://api.ajaxsystems.fun/tcgsm.php?tc={tc}",                  "tc",   "TC (11 hane)"),
+    "gsmtc":     ("📞 GSM → TC",       "https://api.ajaxsystems.fun/gsmtc.php?gsm={gsm}&auth=fire",      "gsm",  "GSM (5xxxxxxxxx)"),
+    "eokul":     ("🎓 E-Okul",         "https://api.ajaxsystems.fun/eokul.php?tc={tc}",                  "tc",   "TC (11 hane)"),
+    "tapu":      ("🏠 Tapu",           "https://api.ajaxsystems.fun/tapu.php?tc={tc}",                   "tc",   "TC (11 hane)"),
+    "adaparsel": ("🗺️ Ada Parsel",     "https://api.ajaxsystems.fun/adaparsel.php?il={il}&ilce={ilce}",  "ilce", "İl,İlçe (İSTANBUL,KADIKÖY) veya İl,İlçe,Ada,Parsel"),
+    "adres":     ("📍 Adres",          "https://api.ajaxsystems.fun/adres.php?tc={tc}",                  "tc",   "TC (11 hane)"),
+}
+
+# Geriye uyumluluk + UI etiketleri için
+TURKIYE_API = {}
+for _k, (_title, _url, _ptype, _hint) in APILER.items():
+    icon = _title.split(" ", 1)[0] if " " in _title else "🔍"
+    label = _title.split(" ", 1)[1] if " " in _title else _title
+    TURKIYE_API[_k] = {
+        "path": _url,
+        "icon": icon,
+        "tr": label,
+        "en": label,
+        "ar": label,
+        "params": [_ptype] if _ptype != "ad" else ["ad", "soyad"],
+        "url_template": _url,
+        "hint": _hint,
+    }
+# Vesika ayrı (ücretli) — eokul endpoint
+TURKIYE_API["vesika"] = {
+    "path": "https://api.ajaxsystems.fun/eokul.php?tc={tc}",
+    "icon": "🪪", "tr": "Vesika (E-Okul)", "en": "ID Photo", "ar": "صورة",
+    "params": ["tc"], "paid": True, "url_template": "https://api.ajaxsystems.fun/eokul.php?tc={tc}",
 }
 
 
 def turkey_request(url, timeout=(10, 45)):
-    """Türkiye API GET — key header + query."""
+    """Türkiye API GET."""
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Accept": "application/json, text/plain, */*",
-        "X-API-Key": TURKIYE_API_KEY,
     }
+    if TURKIYE_API_KEY:
+        headers["X-API-Key"] = TURKIYE_API_KEY
     return requests.get(url, headers=headers, timeout=timeout, verify=False)
 
+
 def turkey_build_url(tool, params: dict) -> str:
-    """ajax API URL + key (query)."""
+    """APILER url_template ile URL oluştur."""
     cfg = TURKIYE_API.get(tool) or {}
-    path = cfg.get("path") or cfg.get("url") or ""
-    if path.startswith("http"):
-        base_url = path
-    else:
-        base_url = TURKIYE_API_BASE + path
-    q = dict(params)
-    if TURKIYE_API_KEY:
-        q["key"] = TURKIYE_API_KEY
-    # query string
-    from urllib.parse import urlencode
-    sep = "&" if "?" in base_url else "?"
-    # if path still has {placeholders} strip them — we only use clean path
-    return base_url.split("?")[0] + sep + urlencode(q, safe="")
+    tmpl = cfg.get("url_template") or cfg.get("path") or ""
+    if not tmpl:
+        return ""
+    # placeholder doldur
+    try:
+        url = tmpl.format(**{k: requests.utils.quote(str(v), safe="") for k, v in params.items()})
+    except Exception:
+        # eksik param varsa raw replace dene
+        url = tmpl
+        for k, v in params.items():
+            url = url.replace("{" + k + "}", requests.utils.quote(str(v), safe=""))
+    # opsiyonel il/ilçe adsoyad için ekle
+    if tool == "adsoyad":
+        extra = []
+        if params.get("il"):
+            extra.append(f"il={requests.utils.quote(str(params['il']), safe='')}")
+        if params.get("ilce"):
+            extra.append(f"ilce={requests.utils.quote(str(params['ilce']), safe='')}")
+        if extra:
+            sep = "&" if "?" in url else "?"
+            url = url + sep + "&".join(extra)
+    if TURKIYE_API_KEY and "key=" not in url:
+        sep = "&" if "?" in url else "?"
+        url = url + sep + "key=" + requests.utils.quote(TURKIYE_API_KEY, safe="")
+    return url
+
 
 TURKEY_PROMPTS = {
     "tr": {
         "tc": "🆔 TC Kimlik Numarası girin (11 haneli):",
         "tcpro": "🔍 TC Kimlik Numarası girin (11 haneli):",
-        "adsoyad": "👤 Ad Soyad girin (Örn: Ali Yılmaz | Ali Veli Yılmaz):",
+        "adsoyad": "👤 Ad Soyad sorgusu adım adım başlıyor...",
         "aile": "👨‍👩‍👧 TC Kimlik Numarası girin (11 haneli):",
         "ailepro": "👨‍👩‍👧‍👦 TC Kimlik Numarası girin (11 haneli):",
         "sulale": "🌳 TC Kimlik Numarası girin (11 haneli):",
@@ -5638,28 +5790,29 @@ TURKEY_PROMPTS = {
         "eokul": "🎓 TC Kimlik Numarası girin (11 haneli):",
         "tapu": "🏠 TC Kimlik Numarası girin (11 haneli):",
         "adaparsel": "🗺️ İl,İlçe girin (Örn: İSTANBUL,KADIKÖY):",
-        "adres": "🏠 Adres Sorgu\nTC Kimlik Numarası girin (11 haneli):",
-        "sgk": "🏥 TC Kimlik Numarası girin (11 haneli):",
-        "isyeri": "🏢 TC Kimlik Numarası girin (11 haneli):",
+        "adres": "📍 TC Kimlik Numarası girin (11 haneli):",
         "vesika": "🪪 Vesika — TC Kimlik Numarası (11 haneli):",
     },
     "en": {
         "tc": "🆔 Enter TC ID (11 digits):", "tcpro": "🔍 Enter TC ID:",
-        "adsoyad": "👤 Enter name surname:", "aile": "👨‍👩‍👧 Enter TC ID:",
+        "adsoyad": "👤 Name query starting...", "aile": "👨‍👩‍👧 Enter TC ID:",
         "ailepro": "👨‍👩‍👧‍👦 Enter TC ID:", "sulale": "🌳 Enter TC ID:",
         "tcgsm": "📱 Enter TC ID:", "gsmtc": "📞 Enter GSM:",
         "eokul": "🎓 Enter TC ID:", "tapu": "🏠 Enter TC ID:",
-        "adaparsel": "🗺️ Enter Province,District:", "adres": "🏠 Enter TC ID:", "sgk": "🏥 Enter TC ID:", "vesika": "🪪 Enter TC ID (photo):",
+        "adaparsel": "🗺️ Enter Province,District:", "adres": "📍 Enter TC ID:",
+        "vesika": "🪪 Enter TC ID (photo):",
     },
     "ar": {
         "tc": "🆔 أدخل رقم الهوية:", "tcpro": "🔍 أدخل رقم الهوية:",
-        "adsoyad": "👤 أدخل الاسم:", "aile": "👨‍👩‍👧 أدخل رقم الهوية:",
+        "adsoyad": "👤 بدء الاستعلام...", "aile": "👨‍👩‍👧 أدخل رقم الهوية:",
         "ailepro": "👨‍👩‍👧‍👦 أدخل رقم الهوية:", "sulale": "🌳 أدخل رقم الهوية:",
         "tcgsm": "📱 أدخل رقم الهوية:", "gsmtc": "📞 أدخل GSM:",
         "eokul": "🎓 أدخل رقم الهوية:", "tapu": "🏠 أدخل رقم الهوية:",
-        "adaparsel": "🗺️ المحافظة,المنطقة:", "adres": "🏠 استعلام العنوان:", "sgk": "🏥 أدخل رقم الهوية:", "vesika": "🪪 صورة الهوية:",
+        "adaparsel": "🗺️ المحافظة,المنطقة:", "adres": "📍 أدخل رقم الهوية:",
+        "vesika": "🪪 صورة الهوية:",
     },
 }
+
 
 
 def tools_kb(user_id):
@@ -6163,7 +6316,11 @@ def log_process(msg, bot_instance):
 
 def turkey_kb(user_id):
     mk = InlineKeyboardMarkup(row_width=2)
-    def lbl(k): return TURKIYE_API[k].get(lang(user_id), TURKIYE_API[k]["tr"])
+    def lbl(k):
+        cfg = TURKIYE_API.get(k, {})
+        return f"{cfg.get('icon','🔍')} {cfg.get(lang(user_id), cfg.get('tr', k))}"
+    # durum satırı
+    st = turkey_status_text(user_id)
     mk.add(_sep("👤 KİMLİK"))
     mk.add(
         _btn(lbl("tc"), "tr_tc", "primary"),
@@ -6188,14 +6345,14 @@ def turkey_kb(user_id):
     )
     mk.add(_btn(lbl("adaparsel"), "tr_adaparsel", "success"))
     mk.add(_btn(lbl("adres"), "tr_adres", "primary"))
-    mk.add(_btn(lbl("isyeri"), "tr_isyeri", "primary"))
-    mk.add(_btn(lbl("sgk"), "tr_sgk", "success"))
     mk.add(_btn("🪪 Vesika Sorgu ⭐", "tr_vesika", "danger"))
+    mk.add(_sep(f"📊 {st.replace('<b>','').replace('</b>','')}"))
     mk.add(
         _btn("Araçlar", "goto_tools", "primary"),
         _btn("🏠 Ana Menü", "goto_home", "success"),
     )
     return mk
+
 
 def ls_kb(user_id):
     mk = InlineKeyboardMarkup(row_width=2)
@@ -8780,6 +8937,8 @@ def register_handlers(bot_instance):
             _btn("➖ Combo Bakiye Al", "adm_combo_take", "danger"),
             _btn("🪪 Vesika Bakiye Ver", "adm_vesika_give", "success"),
             _btn("➖ Vesika Bakiye Al", "adm_vesika_take", "danger"),
+            _btn("🇹🇷 TR Sorgu Hak Ver", "adm_turkey_give", "success"),
+            _btn("➖ TR Sorgu Hak Al", "adm_turkey_take", "danger"),
             _btn("🔍 TG-OSINT Bakiye Ver", "adm_mobius_give", "success"),
             _btn("➖ TG-OSINT Bakiye Al", "adm_mobius_take", "danger"),
             _btn("📋 TG-ID Logları", "adm_tgid_logs", "primary"),
@@ -8865,6 +9024,11 @@ def register_handlers(bot_instance):
             except Exception:
                 pass
             return
+        # Ad Soyad wizard metin girişi
+        st_as = USER_STATES.get(uid) or {}
+        if st_as.get("action") == "adsoyad_wizard":
+            if _handle_adsoyad_text(msg, bot_instance):
+                return
         # Admin state'leri ban / rate'ten once
         st = security_get_state(uid)
         if st and uid == ADMIN_ID:
@@ -8909,6 +9073,14 @@ def register_handlers(bot_instance):
             if action == "adm_vesika_take":
                 USER_STATES.pop(uid, None)
                 _admin_vesika_take(msg, bot_instance)
+                return
+            if action == "adm_turkey_give":
+                USER_STATES.pop(uid, None)
+                _admin_turkey_give(msg, bot_instance)
+                return
+            if action == "adm_turkey_take":
+                USER_STATES.pop(uid, None)
+                _admin_turkey_take(msg, bot_instance)
                 return
 
             if action == "adm_combo_give":
@@ -9272,7 +9444,12 @@ def register_handlers(bot_instance):
                     bot_instance.answer_callback_query(call.id)
                 except Exception:
                     pass
-                txt = "🇹🇷 <b>Türkiye Sorguları</b>\n🛠️ Admin — bakım bypass\nSorgu türünü seç:"
+                txt = (
+                    "🇹🇷 <b>Türkiye Sorguları</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"{turkey_status_text(uid)}\n\n"
+                    "Sorgu türünü seç:"
+                )
                 try:
                     bot_instance.edit_message_text(
                         txt, call.message.chat.id, call.message.message_id,
@@ -10535,14 +10712,22 @@ def register_handlers(bot_instance):
                     return
                 key = data[3:]
                 if key == "vesika" and not vesika_can_query(uid) and uid != ADMIN_ID:
-                    try:
-                        bot_instance.answer_callback_query(call.id)
-                    except Exception:
-                        pass
                     bot_instance.send_message(
                         call.message.chat.id,
                         vesika_no_balance_text(uid),
                         reply_markup=vesika_packages_kb(),
+                        parse_mode="HTML",
+                    )
+                    return
+                # Ad Soyad → adım adım wizard
+                if key == "adsoyad":
+                    _start_adsoyad_wizard(call.message.chat.id, uid, bot_instance)
+                    return
+                # diğer sorgular için limit kontrolü
+                if key != "vesika" and not turkey_can_query(uid):
+                    bot_instance.send_message(
+                        call.message.chat.id,
+                        turkey_no_balance_text(uid),
                         parse_mode="HTML",
                     )
                     return
@@ -10555,12 +10740,82 @@ def register_handlers(bot_instance):
                         + f"💰 Bakiye: <b>{vesika_get_balance(uid)}</b>\n"
                         + "🪪 Sonuç fotoğraf olarak gelir."
                     )
+                else:
+                    ask = str(prompt) + "\n\n" + turkey_status_text(uid)
                 m = bot_instance.send_message(call.message.chat.id, ask, parse_mode="HTML")
                 register_step(bot_instance, m, lambda m, k=key: _process_turkey(m, k, bot_instance))
+                return
+            # ── Ad Soyad wizard butonları ──
+            if data == "adsoyad_cancel":
+                USER_STATES.pop(uid, None)
                 try:
-                    bot_instance.answer_callback_query(call.id)
+                    bot_instance.answer_callback_query(call.id, "İptal edildi")
                 except Exception:
                     pass
+                bot_instance.send_message(call.message.chat.id, "❌ Ad Soyad sorgusu iptal edildi.", reply_markup=turkey_kb(uid))
+                return
+            if data.startswith("adsoyad_ok_"):
+                step = data.replace("adsoyad_ok_", "")
+                st = USER_STATES.get(uid) or {}
+                if st.get("action") != "adsoyad_wizard":
+                    try: bot_instance.answer_callback_query(call.id, "Oturum yok", show_alert=True)
+                    except: pass
+                    return
+                try: bot_instance.answer_callback_query(call.id, "Onaylandı")
+                except: pass
+                if step == "ad":
+                    _adsoyad_ask_soyad(call.message.chat.id, uid, bot_instance)
+                elif step == "soyad":
+                    _adsoyad_ask_il(call.message.chat.id, uid, bot_instance)
+                elif step == "il":
+                    _adsoyad_ask_ilce(call.message.chat.id, uid, bot_instance)
+                elif step == "ilce":
+                    _adsoyad_run_query(call.message.chat.id, uid, bot_instance)
+                return
+            if data.startswith("adsoyad_fix_"):
+                step = data.replace("adsoyad_fix_", "")
+                st = USER_STATES.get(uid) or {}
+                if st.get("action") != "adsoyad_wizard":
+                    return
+                st["step"] = step
+                if step == "ad":
+                    st["ad"] = ""
+                elif step == "soyad":
+                    st["soyad"] = ""
+                elif step == "il":
+                    st["il"] = ""
+                elif step == "ilce":
+                    st["ilce"] = ""
+                USER_STATES[uid] = st
+                try: bot_instance.answer_callback_query(call.id, "Düzelt")
+                except: pass
+                labels = {"ad": "Ad", "soyad": "Soyad", "il": "İl", "ilce": "İlçe"}
+                bot_instance.send_message(
+                    call.message.chat.id,
+                    f"✏️ Yeni <b>{labels.get(step, step)}</b> yazın:",
+                    parse_mode="HTML",
+                    reply_markup=_adsoyad_cancel_kb(),
+                )
+                return
+            if data == "adsoyad_skip_il":
+                st = USER_STATES.get(uid) or {}
+                if st.get("action") != "adsoyad_wizard":
+                    return
+                st["il"] = ""
+                USER_STATES[uid] = st
+                try: bot_instance.answer_callback_query(call.id, "İl atlandı")
+                except: pass
+                _adsoyad_ask_ilce(call.message.chat.id, uid, bot_instance)
+                return
+            if data == "adsoyad_skip_ilce":
+                st = USER_STATES.get(uid) or {}
+                if st.get("action") != "adsoyad_wizard":
+                    return
+                st["ilce"] = ""
+                USER_STATES[uid] = st
+                try: bot_instance.answer_callback_query(call.id, "İlçe atlandı")
+                except: pass
+                _adsoyad_run_query(call.message.chat.id, uid, bot_instance)
                 return
             if data.startswith("ls_"):
                 if not is_premium_osint(uid):
@@ -12111,6 +12366,220 @@ def _admin_sx_give_user(msg, bot_instance, days=30):
 
 
 
+
+# ══════════════════════════════════════════════════════════════
+#  Ad Soyad — adım adım (Ad → Soyad → İl → İlçe)
+# ══════════════════════════════════════════════════════════════
+def _adsoyad_cancel_kb():
+    mk = InlineKeyboardMarkup()
+    mk.add(_btn("❌ İptal", "adsoyad_cancel", "danger"))
+    return mk
+
+def _adsoyad_confirm_kb(step):
+    """step: ad | soyad | il | ilce"""
+    mk = InlineKeyboardMarkup(row_width=2)
+    mk.add(
+        _btn("✅ Onayla", f"adsoyad_ok_{step}", "success"),
+        _btn("✏️ Düzelt", f"adsoyad_fix_{step}", "primary"),
+    )
+    mk.add(_btn("❌ İptal", "adsoyad_cancel", "danger"))
+    return mk
+
+def _adsoyad_il_kb():
+    mk = InlineKeyboardMarkup(row_width=1)
+    mk.add(_btn("🤷 Bilmiyorum", "adsoyad_skip_il", "primary"))
+    mk.add(_btn("❌ İptal", "adsoyad_cancel", "danger"))
+    return mk
+
+def _adsoyad_ilce_kb():
+    mk = InlineKeyboardMarkup(row_width=1)
+    mk.add(_btn("🤷 Bilmiyorum", "adsoyad_skip_ilce", "primary"))
+    mk.add(_btn("❌ İptal", "adsoyad_cancel", "danger"))
+    return mk
+
+def _start_adsoyad_wizard(chat_id, uid, bot_instance):
+    """Ad Soyad sihirbazını başlat."""
+    if not turkey_can_query(uid) and uid != ADMIN_ID:
+        bot_instance.send_message(chat_id, turkey_no_balance_text(uid), parse_mode="HTML")
+        return
+    USER_STATES[uid] = {
+        "action": "adsoyad_wizard",
+        "step": "ad",
+        "ad": "", "soyad": "", "il": "", "ilce": "",
+        "_ts": time.time(),
+    }
+    bot_instance.send_message(
+        chat_id,
+        "👤 <b>Ad Soyad Sorgusu</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{turkey_status_text(uid)}\n\n"
+        "📝 <b>1/4 — Ad</b>\n"
+        "Adınızı yazın (tek veya iki isim olabilir).\n"
+        "Örnek: <code>Ali</code> veya <code>Ali Veli</code> veya <code>Hamam Can</code>",
+        parse_mode="HTML",
+        reply_markup=_adsoyad_cancel_kb(),
+    )
+    # next text message will be handled in main message handler via state
+
+def _adsoyad_ask_soyad(chat_id, uid, bot_instance):
+    st = USER_STATES.get(uid) or {}
+    st["step"] = "soyad"
+    USER_STATES[uid] = st
+    bot_instance.send_message(
+        chat_id,
+        f"✅ Ad: <b>{html.escape(st.get('ad',''))}</b>\n\n"
+        "📝 <b>2/4 — Soyad</b>\n"
+        "Soyadınızı yazın.\n"
+        "Örnek: <code>Yılmaz</code>",
+        parse_mode="HTML",
+        reply_markup=_adsoyad_cancel_kb(),
+    )
+
+def _adsoyad_ask_il(chat_id, uid, bot_instance):
+    st = USER_STATES.get(uid) or {}
+    st["step"] = "il"
+    USER_STATES[uid] = st
+    bot_instance.send_message(
+        chat_id,
+        f"✅ Ad: <b>{html.escape(st.get('ad',''))}</b>\n"
+        f"✅ Soyad: <b>{html.escape(st.get('soyad',''))}</b>\n\n"
+        "📝 <b>3/4 — İl</b>\n"
+        "İl yazın veya bilmiyorsanız butona basın.\n"
+        "Örnek: <code>İSTANBUL</code> / <code>MANİSA</code>",
+        parse_mode="HTML",
+        reply_markup=_adsoyad_il_kb(),
+    )
+
+def _adsoyad_ask_ilce(chat_id, uid, bot_instance):
+    st = USER_STATES.get(uid) or {}
+    st["step"] = "ilce"
+    USER_STATES[uid] = st
+    il_txt = st.get("il") or "—"
+    bot_instance.send_message(
+        chat_id,
+        f"✅ Ad: <b>{html.escape(st.get('ad',''))}</b>\n"
+        f"✅ Soyad: <b>{html.escape(st.get('soyad',''))}</b>\n"
+        f"✅ İl: <b>{html.escape(il_txt)}</b>\n\n"
+        "📝 <b>4/4 — İlçe</b>\n"
+        "İlçe yazın veya bilmiyorsanız butona basın.\n"
+        "Örnek: <code>KADIKÖY</code> / <code>YUNUSEMRE</code>",
+        parse_mode="HTML",
+        reply_markup=_adsoyad_ilce_kb(),
+    )
+
+def _adsoyad_run_query(chat_id, uid, bot_instance, msg=None):
+    """Toplanan verilerle API çağır."""
+    st = USER_STATES.pop(uid, {}) or {}
+    ad = (st.get("ad") or "").strip()
+    soyad = (st.get("soyad") or "").strip()
+    il = (st.get("il") or "").strip()
+    ilce = (st.get("ilce") or "").strip()
+    if not ad or not soyad:
+        bot_instance.send_message(chat_id, "❌ Ad ve soyad zorunlu.")
+        return
+    if not turkey_can_query(uid) and uid != ADMIN_ID:
+        bot_instance.send_message(chat_id, turkey_no_balance_text(uid), parse_mode="HTML")
+        return
+    if not turkey_use_query(uid):
+        bot_instance.send_message(chat_id, turkey_no_balance_text(uid), parse_mode="HTML")
+        return
+    qparams = {"ad": ad, "soyad": soyad}
+    if il:
+        qparams["il"] = il.upper()
+    if ilce:
+        qparams["ilce"] = ilce.upper()
+    param_show = f"{ad} {soyad}"
+    if il:
+        param_show += f", {il}"
+    if ilce:
+        param_show += f", {ilce}"
+    sm = bot_instance.send_message(chat_id, "⏳ Sorgulanıyor...")
+    url = turkey_build_url("adsoyad", qparams)
+    data, err = _api_get(url)
+    if err:
+        try:
+            bot_instance.edit_message_text(err, chat_id, sm.message_id)
+        except Exception:
+            bot_instance.send_message(chat_id, err)
+        return
+    l = lang(uid)
+    title = f"{TURKIYE_API['adsoyad']['icon']} {TURKIYE_API['adsoyad'].get(l, TURKIYE_API['adsoyad']['tr'])}"
+    result = _fmt_generic(title, data, param_show, "Türkiye Sorgu")
+    _send_txt_result(
+        chat_id, sm.message_id, bot_instance,
+        f"Turkey_adsoyad_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt", result,
+        s(uid, "tr_caption", tool="ADSOYAD", param=param_show,
+          date=datetime.now().strftime("%d.%m.%Y %H:%M")),
+    )
+
+
+def _handle_adsoyad_text(msg, bot_instance):
+    """Wizard sırasında gelen metin mesajları."""
+    uid = msg.from_user.id
+    chat_id = msg.chat.id
+    st = USER_STATES.get(uid) or {}
+    if st.get("action") != "adsoyad_wizard":
+        return False
+    text = (msg.text or "").strip()
+    if not text:
+        bot_instance.reply_to(msg, "❌ Boş olamaz, tekrar yazın.")
+        return True
+    step = st.get("step")
+    if step == "ad":
+        # çok isimli ad desteklenir: Ali Veli, Hamam Can vb.
+        st["ad"] = text
+        st["step"] = "ad_confirm"
+        USER_STATES[uid] = st
+        bot_instance.reply_to(
+            msg,
+            f"👤 Ad olarak kaydedildi:\n<code>{html.escape(text)}</code>\n\nOnaylıyor musunuz?",
+            parse_mode="HTML",
+            reply_markup=_adsoyad_confirm_kb("ad"),
+        )
+        return True
+    if step == "soyad":
+        st["soyad"] = text
+        st["step"] = "soyad_confirm"
+        USER_STATES[uid] = st
+        bot_instance.reply_to(
+            msg,
+            f"👤 Soyad olarak kaydedildi:\n<code>{html.escape(text)}</code>\n\nOnaylıyor musunuz?",
+            parse_mode="HTML",
+            reply_markup=_adsoyad_confirm_kb("soyad"),
+        )
+        return True
+    if step == "il":
+        st["il"] = text.upper()
+        st["step"] = "il_confirm"
+        USER_STATES[uid] = st
+        bot_instance.reply_to(
+            msg,
+            f"🏙 İl olarak kaydedildi:\n<code>{html.escape(st['il'])}</code>\n\nOnaylıyor musunuz?",
+            parse_mode="HTML",
+            reply_markup=_adsoyad_confirm_kb("il"),
+        )
+        return True
+    if step == "ilce":
+        st["ilce"] = text.upper()
+        st["step"] = "ilce_confirm"
+        USER_STATES[uid] = st
+        bot_instance.reply_to(
+            msg,
+            f"📍 İlçe olarak kaydedildi:\n<code>{html.escape(st['ilce'])}</code>\n\nOnaylıyor musunuz?",
+            parse_mode="HTML",
+            reply_markup=_adsoyad_confirm_kb("ilce"),
+        )
+        return True
+    # confirm aşamasında metin gelirse düzelt gibi davran
+    if step and step.endswith("_confirm"):
+        base = step.replace("_confirm", "")
+        st["step"] = base
+        USER_STATES[uid] = st
+        bot_instance.reply_to(msg, "✏️ Yeni değer için tekrar yazın veya butonları kullanın.")
+        return True
+    return True
+
+
 def _process_turkey(msg, tool, bot_instance):
     uid = msg.from_user.id
     if TURKIYE_MAINTENANCE and uid != ADMIN_ID:
@@ -12123,9 +12592,13 @@ def _process_turkey(msg, tool, bot_instance):
             parse_mode="HTML",
         )
         return
+    # Ad soyad artık wizard ile çalışır
+    if tool == "adsoyad":
+        _start_adsoyad_wizard(msg.chat.id, uid, bot_instance)
+        return
     param = (msg.text or "").strip()
     l = lang(uid)
-    if tool in ("tc", "tcpro", "aile", "ailepro", "sulale", "tcgsm", "eokul", "tapu", "adres", "sgk", "vesika", "isyeri"):
+    if tool in ("tc", "tcpro", "aile", "ailepro", "sulale", "tcgsm", "eokul", "tapu", "adres", "vesika"):
         if not (param.isdigit() and len(param) == 11):
             bot_instance.reply_to(msg, s(uid, "invalid_tc"))
             return
@@ -12135,10 +12608,6 @@ def _process_turkey(msg, tool, bot_instance):
             bot_instance.reply_to(msg, s(uid, "invalid_gsm"))
             return
         param = clean
-    elif tool == "adsoyad":
-        if len(param.split()) < 2:
-            bot_instance.reply_to(msg, "❌ Ad ve soyad girin (örn: Ali Yılmaz)")
-            return
     elif tool == "adaparsel":
         if "," not in param:
             bot_instance.reply_to(msg, "❌ Format: İl,İlçe")
@@ -12154,6 +12623,11 @@ def _process_turkey(msg, tool, bot_instance):
                 parse_mode="HTML",
             )
             return
+    else:
+        # Genel Türkiye sorgu hakkı (günlük 20 free + bakiye)
+        if not turkey_can_query(uid):
+            bot_instance.reply_to(msg, turkey_no_balance_text(uid), parse_mode="HTML")
+            return
 
     sm = bot_instance.reply_to(msg, s(uid, "processing"))
     api_cfg = TURKIYE_API.get(tool)
@@ -12161,23 +12635,27 @@ def _process_turkey(msg, tool, bot_instance):
         bot_instance.edit_message_text("❌ Geçersiz araç.", msg.chat.id, sm.message_id)
         return
     qparams = {}
-    if tool == "adsoyad":
-        parts = param.split()
-        if len(parts) >= 3:
-            ad = " ".join(parts[:-1])
-            soyad = parts[-1]
-        else:
-            ad, soyad = parts[0], parts[1]
-        qparams = {"ad": ad, "soyad": soyad}
-    elif tool == "adaparsel":
+    if tool == "adaparsel":
         pts = param.split(",")
         qparams = {"il": pts[0].strip().upper(), "ilce": pts[1].strip().upper()}
         if len(pts) > 2 and pts[2].strip():
-            qparams["mahalle"] = pts[2].strip()
+            qparams["ada"] = pts[2].strip()
+        if len(pts) > 3 and pts[3].strip():
+            qparams["parsel"] = pts[3].strip()
     elif tool == "gsmtc":
         qparams = {"gsm": param}
     else:
         qparams = {"tc": param}
+
+    # Hak düş (vesika kendi bakiyesini kullanır)
+    if tool != "vesika":
+        if not turkey_use_query(uid):
+            try:
+                bot_instance.edit_message_text(turkey_no_balance_text(uid), msg.chat.id, sm.message_id, parse_mode="HTML")
+            except Exception:
+                bot_instance.reply_to(msg, turkey_no_balance_text(uid), parse_mode="HTML")
+            return
+
     url = turkey_build_url(tool, qparams)
 
     # Vesika: fotoğraf cevabi (JSON: durum + veri.vesika base64 JPEG)
@@ -12946,6 +13424,22 @@ def _handle_admin_cb(call, action, bot_instance):
             USER_STATES[uid] = {"action": "adm_vesika_take"}
             bot_instance.send_message(cid, "➖ Vesika Bakiye Al\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
             return
+        elif action == "turkey_give":
+            try:
+                bot_instance.answer_callback_query(call.id)
+            except Exception:
+                pass
+            USER_STATES[uid] = {"action": "adm_turkey_give"}
+            bot_instance.send_message(cid, "🇹🇷 TR Sorgu Hak Ver\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
+            return
+        elif action == "turkey_take":
+            try:
+                bot_instance.answer_callback_query(call.id)
+            except Exception:
+                pass
+            USER_STATES[uid] = {"action": "adm_turkey_take"}
+            bot_instance.send_message(cid, "➖ TR Sorgu Hak Al\n<code>USER_ID MIKTAR</code>", parse_mode="HTML")
+            return
 
         elif action == "combo_give":
             try:
@@ -13194,6 +13688,58 @@ def _admin_announce(msg, bot_instance):
     bot_instance.reply_to(msg, f"✅ Duyuru gönderildi!\n✅ Başarılı: {sent}\n❌ Başarısız: {failed}\n👥 Toplam: {sent + failed}")
 
 
+
+
+def _admin_turkey_give(msg, bot_instance):
+    if msg.from_user.id != ADMIN_ID:
+        return
+    try:
+        parts = msg.text.strip().split()
+        target = int(parts[0])
+        amount = int(parts[1])
+        if amount <= 0:
+            raise ValueError
+    except Exception:
+        bot_instance.reply_to(msg, "❌ <code>USER_ID MIKTAR</code>", parse_mode="HTML")
+        return
+    add_user(target, "", "")
+    turkey_init_user(target)
+    turkey_add_balance(target, amount)
+    bal = turkey_get_balance(target)
+    bot_instance.reply_to(
+        msg,
+        f"✅ +{amount} TR sorgu hakkı: <code>{target}</code>\n💰 Bakiye: <b>{bal}</b>\n{turkey_status_text(target)}",
+        parse_mode="HTML",
+    )
+    try:
+        bot_instance.send_message(
+            target,
+            f"🎁 Admin sana <b>+{amount}</b> Türkiye sorgu hakkı verdi!\n💰 Bakiye: <b>{bal}</b>",
+            parse_mode="HTML",
+        )
+    except Exception:
+        pass
+
+def _admin_turkey_take(msg, bot_instance):
+    if msg.from_user.id != ADMIN_ID:
+        return
+    try:
+        parts = msg.text.strip().split()
+        target = int(parts[0])
+        amount = int(parts[1])
+        if amount <= 0:
+            raise ValueError
+    except Exception:
+        bot_instance.reply_to(msg, "❌ <code>USER_ID MIKTAR</code>", parse_mode="HTML")
+        return
+    current = turkey_get_balance(target)
+    new_bal = max(0, current - amount)
+    turkey_set(target, "query_balance", new_bal)
+    bot_instance.reply_to(
+        msg,
+        f"✅ -{amount} TR sorgu: <code>{target}</code>\n💰 Yeni: <b>{new_bal}</b>",
+        parse_mode="HTML",
+    )
 
 def _admin_vesika_give(msg, bot_instance):
     if msg.from_user.id != ADMIN_ID:
