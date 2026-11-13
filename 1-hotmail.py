@@ -4058,7 +4058,7 @@ def turkey_packages_kb():
     mk.add(_btn(f"⏱ 3 Günlük — 100 ⭐", "turkey_buy_t_3", "primary"))
     mk.add(_btn(f"⏱ Haftalık (7g) — 300 ⭐", "turkey_buy_t_7", "success"))
     mk.add(_btn(f"⏱ Aylık (30g) — 500 ⭐", "turkey_buy_t_30", "danger"))
-    mk.add(_btn("💬 Sınırsız için admin'e yaz", "turkey_unlimited_info", "primary"))
+    mk.add(_btn("💬 Sınırsız — @hackledin", "turkey_unlimited_info", "primary"))
     mk.add(_btn("◀️ Türkiye Menü", "menu_turkey", "primary"))
     return mk
 
@@ -5921,7 +5921,7 @@ def tools_kb(user_id):
     """
     mk = InlineKeyboardMarkup(row_width=2)
     mk.add(
-        _btn("🇹🇷 Türkiye Sorguları 🛠️", "menu_turkey", "danger"),
+        _btn("🇹🇷 Türkiye Sorguları", "menu_turkey", "danger"),
         _btn("SearchX 😈", "menu_lmnx", "primary"),
     )
     mk.add(
@@ -11051,7 +11051,7 @@ def register_handlers(bot_instance):
                     "• 3 Günlük — 100 ⭐\n"
                     "• Haftalık (7g) — 300 ⭐\n"
                     "• Aylık (30g) — 500 ⭐\n\n"
-                    "💬 Sınırsız kalıcı hak için admin'e yaz."
+                    "💬 Sınırsız kalıcı hak için: @hackledin"
                 )
                 try:
                     bot_instance.edit_message_text(
@@ -11067,15 +11067,15 @@ def register_handlers(bot_instance):
 
             if data == "turkey_unlimited_info":
                 try:
-                    bot_instance.answer_callback_query(call.id, "Admin ile iletişime geç", show_alert=True)
+                    bot_instance.answer_callback_query(call.id)
                 except Exception:
                     pass
                 bot_instance.send_message(
                     call.message.chat.id,
                     "💬 <b>Sınırsız Türkiye sorgu</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n"
-                    "Kalıcı / özel paket için admin'e yaz.\n"
-                    f"Admin ID: <code>{ADMIN_ID}</code>",
+                    "Kalıcı / özel paket için iletişime geç:\n"
+                    "👤 <b>@hackledin</b>",
                     parse_mode="HTML",
                 )
                 return
